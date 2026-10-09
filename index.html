@@ -318,7 +318,8 @@ body{
 .wblock .wfull{grid-column:1/-1;justify-self:start;white-space:normal;max-width:100%;}
 .wblock .wfull.wheading{font-weight:700;color:var(--tier-deep);margin-top:4px;}
 .wblock .wfull.wresult{font-weight:700;color:var(--tier-deep);margin-top:2px;}
-@media(max-width:760px){.wblock{grid-template-columns:max-content max-content max-content;font-size:0.92rem;}.wblock .wn{grid-column:1/-1;justify-self:start;padding-left:0;margin-top:-2px;margin-bottom:2px;}}
+@media(max-width:760px){.wblock{grid-template-columns:max-content max-content max-content;font-size:0.92rem;}.wblock .wn{grid-column:1/-1;justify-self:start;padding-left:0;margin-top:-2px;margin-bottom:2px;}.wblock{grid-template-columns:max-content max-content minmax(0,1fr);}.wblock .wr{max-width:100%;}}
+@media(max-width:480px){.hcf-lcm-table th,.hcf-lcm-table td{padding:5px 7px;}.example-card table{display:block;overflow-x:auto;max-width:100%;}}
 
 /* Division "bus stop" bracket — per-digit column alignment.
    Each dividend digit gets its own column; the quotient digit for that
@@ -3858,7 +3859,8 @@ const TYPE_2_1b = {
     do {
       denoms = pickDenoms();
       fractions = denoms.map(d => {
-        const n = randInt(1, d - 1);
+        let n;
+        do { n = randInt(1, d - 1); } while (gcdFrac(n, d) !== 1);
         return [n, d];
       });
     } while (new Set(fractions.map(f => f[0] / f[1])).size !== 4); // ensure 4 distinct values
@@ -4472,7 +4474,11 @@ const TYPE_2_4c = {
    a display string that always shows exactly that many decimal digits
    (preserving trailing zeros, e.g. 0.037 not 0.04 if 3dp was asked for). */
 function roundToDp(value, dp) {
-  return value.toFixed(dp);
+  // Half-up rounding that is not thrown by binary floating point
+  // (plain toFixed turns 18.6545 into 18.654).
+  const f = Math.pow(10, dp);
+  const r = Math.sign(value) * Math.round(Math.abs(value) * f * (1 + 1e-12)) / f;
+  return r.toFixed(dp);
 }
 
 /* roundToSigFigDisplay: rounds a number to N significant figures, returning
@@ -4485,13 +4491,13 @@ function roundToSigFigDisplay(value, sigFigs) {
   if (value === 0) return '0';
   const magnitude = Math.floor(Math.log10(Math.abs(value)));
   const factor = Math.pow(10, sigFigs - 1 - magnitude);
-  const rounded = Math.round(value * factor) / factor;
+  const rounded = Math.sign(value) * Math.round(Math.abs(value) * factor * (1 + 1e-12)) / factor;
   const newMagnitude = rounded === 0 ? magnitude : Math.floor(Math.log10(Math.abs(rounded)));
   const decimalPlacesNeeded = sigFigs - 1 - newMagnitude;
   if (decimalPlacesNeeded > 0) {
     return rounded.toFixed(decimalPlacesNeeded);
   }
-  return String(rounded);
+  return String(Math.round(rounded));
 }
 
 /* =========================================================================
@@ -4557,14 +4563,14 @@ const TYPE_2_5a = {
     return {
       boards: boards,
       parts: [
-        { label: "a", marks: 2, prompt: `Round ${numA} to ${dp} decimal places.`, answerType: "number", correct: ansA, exactPrecision: true },
-        { label: "b", marks: 2, prompt: `Round ${numB} to ${dp} decimal places.`, answerType: "number", correct: ansB, exactPrecision: true },
-        { label: "c", marks: 2, prompt: `Round ${numC} to ${dp} decimal places.`, answerType: "number", correct: ansC, exactPrecision: true }
+        { label: "a", marks: 2, prompt: `Round ${wholeA}.${decA} to ${dp} decimal places.`, answerType: "number", correct: ansA, exactPrecision: true },
+        { label: "b", marks: 2, prompt: `Round ${wholeB}.${decB} to ${dp} decimal places.`, answerType: "number", correct: ansB, exactPrecision: true },
+        { label: "c", marks: 2, prompt: `Round ${wholeC}.${decC} to ${dp} decimal places.`, answerType: "number", correct: ansC, exactPrecision: true }
       ],
       solutionSteps: [
-        { math: `${numA} = ${ansA} (${dp} d.p.)`, note: "The digit after the cut is less than 5, so round down." },
-        { math: `${numB} = ${ansB} (${dp} d.p.)`, note: "The digit after the cut is 5 or more, so round up." },
-        { math: `${numC} = ${ansC} (${dp} d.p.)`, note: "Rounding up here causes a carry, since the digit being rounded was a 9." }
+        { math: `${wholeA}.${decA} = ${ansA} (${dp} d.p.)`, note: "The digit after the cut is less than 5, so round down." },
+        { math: `${wholeB}.${decB} = ${ansB} (${dp} d.p.)`, note: "The digit after the cut is 5 or more, so round up." },
+        { math: `${wholeC}.${decC} = ${ansC} (${dp} d.p.)`, note: "Rounding up here causes a carry, since the digit being rounded was a 9." }
       ]
     };
   }
@@ -4613,15 +4619,15 @@ const TYPE_2_5b = {
     // rounding to N sig figs without any placeholder-zero complication.
     const wholeDigits = randInt(2, 3);
     let rawA = randInt(Math.pow(10, wholeDigits - 1), Math.pow(10, wholeDigits) - 1);
-    const decTailA = randInt(0, 999);
+    let decTailA; do { decTailA = randInt(0, 999); } while (decTailA % 10 === 0);
     const numA = parseFloat(`${rawA}.${String(decTailA).padStart(3, '0')}`);
     const ansA = roundToSigFigDisplay(numA, sigFigs);
 
     // Part b: a small decimal with genuine leading placeholder zeros, so
     // identifying the first significant figure is the actual skill tested.
     const leadingZeros = randInt(1, 3);
-    const sigDigits = randInt(100, 999); // 3-digit block to round from
-    const numB = sigDigits / Math.pow(10, leadingZeros + 2);
+    let sigDigits; do { sigDigits = randInt(1000, 9999); } while (sigDigits % 10 === 0); // 4-digit block, so there is always something to round
+    const numB = sigDigits / Math.pow(10, leadingZeros + 3);
     const ansB = roundToSigFigDisplay(numB, sigFigs);
 
     const boardsAll = ["WJEC", "Edexcel", "AQA", "IGCSE"];
@@ -4695,6 +4701,7 @@ const TYPE_3_1a = {
     const sf = scaleNumerators[idx] / scaleDenominators[idx];
     const originalPeople = scaleDenominators[idx] * randInt(1, 4);
     const newPeople = originalPeople * sf;
+    const sfStr = Number.isInteger(sf) ? String(sf) : `${scaleNumerators[idx]}/${scaleDenominators[idx]}`;
     // Pick ingredient amounts that are exact multiples of the denominator
     // factor, so scaled amounts are always whole or one-decimal-place.
     const mult = scaleDenominators[idx];
@@ -4717,13 +4724,13 @@ const TYPE_3_1a = {
     return {
       boards: boards,
       parts: [
-        { label: "a", marks: 2, prompt: `A recipe for ${originalPeople} people needs ${ingredients[0].orig} ${ingredients[0].unit} of ${ingredients[0].name}. ${cook} wants to make it for ${newPeople} people. Work out the amount of ${ingredients[0].name} needed.`, answerType: "number", correct: ingredients[0].scaled },
-        { label: "b", marks: 2, prompt: `The same recipe needs ${ingredients[1].orig} ${ingredients[1].unit} of ${ingredients[1].name} for ${originalPeople} people. Work out the amount needed for ${newPeople} people.`, answerType: "number", correct: ingredients[1].scaled },
-        { label: "c", marks: 2, prompt: `The same recipe needs ${ingredients[2].orig} ${ingredients[2].unit} of ${ingredients[2].name} for ${originalPeople} people. Work out the amount needed for ${newPeople} people.`, answerType: "number", correct: ingredients[2].scaled }
+        { label: "a", marks: 2, prompt: `A recipe for ${originalPeople} people needs ${ingredients[0].orig} ${ingredients[0].unit} of ${ingredients[0].name}. ${cook} wants to make it for ${newPeople} ${newPeople === 1 ? 'person' : 'people'}. Work out the amount of ${ingredients[0].name} needed.`, answerType: "number", correct: ingredients[0].scaled },
+        { label: "b", marks: 2, prompt: `The same recipe needs ${ingredients[1].orig} ${ingredients[1].unit} of ${ingredients[1].name} for ${originalPeople} people. Work out the amount needed for ${newPeople} ${newPeople === 1 ? 'person' : 'people'}.`, answerType: "number", correct: ingredients[1].scaled },
+        { label: "c", marks: 2, prompt: `The same recipe needs ${ingredients[2].orig} ${ingredients[2].unit} of ${ingredients[2].name} for ${originalPeople} people. Work out the amount needed for ${newPeople} ${newPeople === 1 ? 'person' : 'people'}.`, answerType: "number", correct: ingredients[2].scaled }
       ],
       solutionSteps: [
-        { math: `Scale factor = ${newPeople} ÷ ${originalPeople} = ${sf}`, note: "New amount of people divided by the original amount of people." },
-        { math: `${ingredients[0].orig} × ${sf} = ${ingredients[0].scaled} ${ingredients[0].unit}, ${ingredients[1].orig} × ${sf} = ${ingredients[1].scaled} ${ingredients[1].unit}, ${ingredients[2].orig} × ${sf} = ${ingredients[2].scaled} ${ingredients[2].unit}`, note: "Multiply every ingredient by the scale factor." }
+        { math: `Scale factor = ${newPeople} ÷ ${originalPeople} = ${sfStr}`, note: "New amount of people divided by the original amount of people." },
+        { math: `${ingredients[0].orig} × ${sfStr} = ${ingredients[0].scaled} ${ingredients[0].unit}, ${ingredients[1].orig} × ${sfStr} = ${ingredients[1].scaled} ${ingredients[1].unit}, ${ingredients[2].orig} × ${sfStr} = ${ingredients[2].scaled} ${ingredients[2].unit}`, note: "Multiply every ingredient by the scale factor." }
       ]
     };
   }
@@ -5808,7 +5815,7 @@ const TYPE_3_6a = {
 
   study: {
     boards: ["WJEC", "Edexcel", "AQA", "IGCSE"],
-    question: "A shop sells two sizes of the same cereal: a 300 g box for £1.50, and a 500 g box for £2.500. Which box is better value?",
+    question: "A shop sells two sizes of the same cereal: a 300 g box for £1.50, and a 500 g box for £2.50. Which box is better value?",
     solutionSteps: [
       { math: workingBlock([{ l: "Small box", s: "=", r: "£1.50 &divide; 300" }, { l: "", s: "=", r: "£0.005 per g = 0.5p per g" }]), note: "Find the price per gram for the small box.", stacked: true },
       { math: workingBlock([{ l: "Large box", s: "=", r: "£2.50 &divide; 500" }, { l: "", s: "=", r: "£0.005 per g = 0.5p per g" }]), note: "Find the price per gram for the large box.", stacked: true },
@@ -5819,8 +5826,8 @@ const TYPE_3_6a = {
   exampleTest: {
     boards: ["WJEC", "Edexcel", "AQA", "IGCSE"],
     parts: [
-      { label: "a", marks: 2, prompt: "A 200 g jar of coffee costs £3. Find the price per 100 g.", answerType: "number", correct: "1.5", exactPrecision: true },
-      { label: "b", marks: 2, prompt: "A 500 g jar of the same coffee costs £6.50. Find the price per 100 g.", answerType: "number", correct: "1.3", exactPrecision: true },
+      { label: "a", marks: 2, prompt: "A 200 g jar of coffee costs £3. Find the price per 100 g.", answerType: "number", correct: "1.50", exactPrecision: true },
+      { label: "b", marks: 2, prompt: "A 500 g jar of the same coffee costs £6.50. Find the price per 100 g.", answerType: "number", correct: "1.30", exactPrecision: true },
       { label: "c", marks: 1, prompt: "Which jar is better value: the 200 g jar or the 500 g jar?", answerType: "text", correct: "500g" }
     ],
     solutionSteps: [
@@ -6069,8 +6076,8 @@ const TYPE_4_1c = {
         { label: "c", marks: 2, prompt: `Use your calculator to work out ∛${cbrtArg}, giving your answer to 3 significant figures.`, answerType: "number", correct: cbrtRounded, exactPrecision: true }
       ],
       solutionSteps: [
-        { math: `${sqBaseFinal}² = ${sqVal} = ${sqRounded} (3 s.f.)`, note: "" },
-        { math: `${cuBaseFinal}³ = ${cuVal} = ${cuRounded} (3 s.f.)`, note: "" },
+        { math: `${sqBaseFinal}² = ${+sqVal.toPrecision(12)} = ${sqRounded} (3 s.f.)`, note: "" },
+        { math: `${cuBaseFinal}³ = ${+cuVal.toPrecision(12)} = ${cuRounded} (3 s.f.)`, note: "" },
         { math: `∛${cbrtArg} = ${cbrtVal.toFixed(6)}... = ${cbrtRounded} (3 s.f.)`, note: "" }
       ]
     };
@@ -6248,7 +6255,7 @@ const TYPE_4_2b = {
         { label: "c", marks: 2, prompt: `Use your calculator to work out ${fracPowerUnit(radicandC, rootN_C)}, giving your answer to 3 significant figures.`, answerType: "number", correct: roundedC, exactPrecision: true }
       ],
       solutionSteps: [
-        { math: `${baseA}${supDigits(expA)} = ${valA} = ${roundedA} (3 s.f.)`, note: "" },
+        { math: `${baseA}${supDigits(expA)} = ${+valA.toPrecision(12)} = ${roundedA} (3 s.f.)`, note: "" },
         { math: `${fracPowerUnit(radicandB, rootN_B)} = ${valB.toFixed(6)}... = ${roundedB} (3 s.f.)`, note: "" },
         { math: `${fracPowerUnit(radicandC, rootN_C)} = ${valC.toFixed(6)}... = ${roundedC} (3 s.f.)`, note: "" }
       ]
@@ -7002,7 +7009,7 @@ const TYPE_5_0a = {
     parts: [
       { label: "a", marks: 1, prompt: "Which is correct: 7² = 14 or 7² = 49? Explain the slip.", answerType: "text", correct: "49" },
       { label: "b", marks: 1, prompt: "Which is correct: 3 + 4×5 = 35 or 3 + 4×5 = 23? Explain the slip.", answerType: "text", correct: "23" },
-      { label: "c", marks: 2, prompt: "What is the difference between -5² and (-5)²?", answerType: "text", correct: "-25and25" },
+      { label: "c", marks: 2, prompt: "Work out -5² and (-5)². Give both values, -5² first, separated by a comma.", answerType: "text", correct: "-25,25" },
       { label: "d", marks: 2, prompt: "True or false: x² + x² = x⁴. Explain.", answerType: "text", correct: "false" }
     ],
     solutionSteps: [
@@ -7024,21 +7031,28 @@ const TYPE_5_0a = {
     }
     const boardsAll = ["WJEC", "Edexcel", "AQA", "IGCSE"];
     const boards = [boardsAll[Math.floor(Math.random() * boardsAll.length)]];
+    // Swap the two options at random, so the right answer is not always B.
+    const swaps = indices.map(() => Math.random() < 0.5);
+    const shown = (i, k) => {
+      const q = bank[i];
+      const right = swaps[k] ? (q.correct === 'A' ? 'B' : 'A') : q.correct;
+      return { A: swaps[k] ? q.optionB : q.optionA, B: swaps[k] ? q.optionA : q.optionB, right };
+    };
     return {
       boards: boards,
       parts: indices.map((i, idx) => {
-        const q = bank[i];
+        const q = bank[i], o = shown(i, idx);
         return {
           label: String.fromCharCode(97 + idx), // a, b, c
           marks: 2,
-          prompt: `Which answer is correct, and what is the likely slip? "${q.question}" — Answer A: ${q.optionA} or Answer B: ${q.optionB}.`,
+          prompt: `Which answer is correct, and what is the likely slip? "${q.question}" — Answer A: ${o.A} or Answer B: ${o.B}. (Type A or B.)`,
           answerType: "text",
-          correct: `Answer ${q.correct}`
+          correct: o.right
         };
       }),
-      solutionSteps: indices.map(i => {
+      solutionSteps: indices.map((i, idx) => {
         const q = bank[i];
-        return { math: `Correct: Answer ${q.correct}`, note: q.slip };
+        return { math: `Correct: Answer ${shown(i, idx).right}`, note: q.slip };
       })
     };
   }
@@ -7115,7 +7129,7 @@ const TYPE_5_1a = {
     // Part c: product minus linear (two distinct operations)
     const coeffC = randInt(2, 4);
     const ansC = p * q - coeffC * r;
-    const valStr = (n) => n < 0 ? `(${n})` : `${n}`;
+    const valStr = (n) => `(${n})`;
     const boardsAll = ["WJEC", "Edexcel", "AQA", "IGCSE"];
     const boards = [boardsAll[Math.floor(Math.random() * boardsAll.length)]];
     return {
@@ -7199,7 +7213,7 @@ const TYPE_5_1b = {
     // Part c: n ÷ (m + k) for some k, ensuring exact integer division
     // Build from a clean integer result: pick quotient q, then
     // denominator = m + k and numerator = n, adjust to ensure divisibility.
-    const denomC = randInt(2, m + 2);
+    let denomC; do { denomC = randInt(2, m + 2); } while (denomC === m);
     // Make numerator a multiple of denomC: pick quotientC then derive n-like numerator
     const quotientC = randInt(-3, -1);
     const numeratorC = quotientC * denomC;
@@ -7212,8 +7226,8 @@ const TYPE_5_1b = {
     return {
       boards: boards,
       parts: [
-        { label: "a", marks: 2, prompt: `Given m = ${m} and n = ${n}, evaluate m(${coeffA}n + m).`, answerType: "number", correct: String(ansA) },
-        { label: "b", marks: 3, prompt: `Given m = ${m} and n = ${n}, evaluate (${coeffB}m + n)².`, answerType: "number", correct: String(ansB) },
+        { label: "a", marks: 2, prompt: `Given m = ${m} and n = ${n}, evaluate m(${coeffA === 1 ? '' : coeffA}n + m).`, answerType: "number", correct: String(ansA) },
+        { label: "b", marks: 3, prompt: `Given m = ${m} and n = ${n}, evaluate (${coeffB === 1 ? '' : coeffB}m + n)².`, answerType: "number", correct: String(ansB) },
         { label: "c", marks: 2, prompt: `Given m = ${m}, evaluate ${numeratorC} ÷ (m ${kCStr}).`, answerType: "number", correct: String(ansC) }
       ],
       solutionSteps: [
@@ -7279,7 +7293,7 @@ const TYPE_5_1c = {
       const Srounded = roundToSigFigDisplay(S, 3);
       prompt = `The surface area of a closed cylinder is S = 2πr(r + h). Find S when r = ${r} cm and h = ${h} cm. Give your answer to 3 significant figures.`;
       correct = Srounded;
-      solutionMath = `S = 2π(${r})(${r} + ${h}) = 2π(${r})(${r+h}) = ${S.toFixed(4)}... ≈ ${Srounded} cm²`;
+      solutionMath = `S = 2π(${r})(${r} + ${h}) = 2π(${r})(${+(r+h).toFixed(1)}) = ${S.toFixed(4)}... ≈ ${Srounded} cm²`;
     } else if (formulaChoice === 1) {
       // Volume of a sphere: V = (4/3)πr³
       const r = (randInt(8, 25) / 10); // 0.8 to 2.5
@@ -7296,7 +7310,7 @@ const TYPE_5_1c = {
       const Erounded = roundToSigFigDisplay(E, 3);
       prompt = `The kinetic energy of a moving object is E = (1/2)mv². Find E when m = ${m} kg and v = ${v} m/s. Give your answer to 3 significant figures.`;
       correct = Erounded;
-      solutionMath = `E = (1/2)(${m})(${v})² = (1/2)(${m})(${v*v}) = ${E.toFixed(4)}... ≈ ${Erounded} J`;
+      solutionMath = `E = (1/2)(${m})(${v})² = (1/2)(${m})(${+(v*v).toFixed(2)}) = ${E.toFixed(4)}... ≈ ${Erounded} J`;
     } else {
       // Volume of a cone: V = (1/3)πr²h
       const r = (randInt(10, 40) / 10);
@@ -7688,7 +7702,8 @@ const TYPE_5_3a = {
       const s = c === 1 ? l : (c === -1 ? `-${l}` : `${c}${l}`);
       return (showPlus && c > 0) ? `+ ${s}` : s;
     };
-    const promptA = `${termStr(a1,l1)} + ${termStr(a2,l2)} + (${termStr(a3,l1)}) + (${termStr(a4,l2)})`;
+    const signed = (c, l) => (c < 0 ? '- ' : '+ ') + termStr(Math.abs(c), l);
+    const promptA = `${termStr(a1,l1)} ${signed(a2,l2)} ${signed(a3,l1)} ${signed(a4,l2)}`;
     // Helper to build a term string with coefficient 1 suppressed
     const algTerm = (c, l) => c === 1 ? l : (c === -1 ? `-${l}` : `${c}${l}`);
     // Build the correct answer, skipping any term whose coefficient is 0
@@ -7703,7 +7718,7 @@ const TYPE_5_3a = {
     const lB = letters[randInt(0, letters.length-1)];
     const q1 = randNZ(2, 7), q2 = randNZ(1, 5), l1c = randNZ(-5, 5), l2c = randNZ(-5, 5);
     const resQ = q1 + q2, resL = l1c + l2c;
-    const promptB = `${q1}${lB}² ${l1c >= 0 ? '+ ' : '- '}${Math.abs(l1c)}${lB} + ${q2}${lB}² ${l2c >= 0 ? '+ ' : '- '}${Math.abs(l2c)}${lB}`;
+    const promptB = `${q1}${lB}² ${l1c >= 0 ? '+ ' : '- '}${termStr(Math.abs(l1c), lB)} + ${termStr(q2, lB)}² ${l2c >= 0 ? '+ ' : '- '}${termStr(Math.abs(l2c), lB)}`;
     // Suppress coefficient 1 in the answer (resQ is always ≥3 so fine; resL may be ±1)
     const linPart = resL === 0 ? '' : (resL >= 0 ? '+' : '') + algTerm(resL, lB);
     const correctB = `${resQ}${lB}^2${linPart}`;
@@ -7848,8 +7863,8 @@ const TYPE_5_3c = {
     const s2 = Math.random() < 0.5 ? 1 : -1;
     const xTermA = m1*c1 + m2*c2;
     const constA = m1*k1*s1 + m2*k2*s2;
-    const s1Str = s1 > 0 ? '-' : '+';
-    const s2Str = s2 > 0 ? '-' : '+';
+    const s1Str = s1 > 0 ? '+' : '-';
+    const s2Str = s2 > 0 ? '+' : '-';
     // Part b: second bracket has negative multiplier — the harder case
     const m3 = randInt(2, 5), c3 = randInt(2, 6), k3 = randInt(1, 8);
     const s3 = Math.random() < 0.5 ? 1 : -1;
@@ -7858,21 +7873,24 @@ const TYPE_5_3c = {
     // second bracket is subtracted: m3(...) - m4(...)
     const xTermB = m3*c3 - m4*c4;
     const constB = m3*k3*s3 - m4*k4*s4;
-    const s3Str = s3 > 0 ? '-' : '+';
+    const s3Str = s3 > 0 ? '+' : '-';
     const s4Str = s4 > 0 ? '+' : '-';
     const boardsAll = ["WJEC", "Edexcel", "AQA", "IGCSE"];
     const boards = [boardsAll[Math.floor(Math.random() * boardsAll.length)]];
-    const correctA = `${xTermA}${let1}${constA >= 0 ? '+' : ''}${constA}`;
-    const correctB = `${xTermB}${let1}${constB >= 0 ? '+' : ''}${constB}`;
+    // Simplest form: no "1x", "0x" or "+0" terms.
+    const cv = (n) => n === 1 ? let1 : `${n}${let1}`;
+    const fmtLin = (xc, k) => { const xs = xc === 0 ? '' : xc === 1 ? let1 : xc === -1 ? `-${let1}` : `${xc}${let1}`; const ks = k === 0 ? '' : (k > 0 && xs ? '+' : '') + k; return (xs + ks) || '0'; };
+    const correctA = fmtLin(xTermA, constA);
+    const correctB = fmtLin(xTermB, constB);
     return {
       boards: boards,
       parts: [
-        { label: "a", marks: 3, prompt: `Expand and simplify ${m1}(${c1}${let1} ${s1Str} ${k1}) + ${m2}(${c2}${let1} ${s2Str} ${k2}).`, answerType: "text", correct: correctA },
-        { label: "b", marks: 3, prompt: `Expand and simplify ${m3}(${c3}${let1} ${s3Str} ${k3}) - ${m4}(${c4}${let1} ${s4Str} ${k4}).`, answerType: "text", correct: correctB }
+        { label: "a", marks: 3, prompt: `Expand and simplify ${m1}(${cv(c1)} ${s1Str} ${k1}) + ${m2}(${cv(c2)} ${s2Str} ${k2}).`, answerType: "text", correct: correctA },
+        { label: "b", marks: 3, prompt: `Expand and simplify ${m3}(${cv(c3)} ${s3Str} ${k3}) - ${m4}(${cv(c4)} ${s4Str} ${k4}).`, answerType: "text", correct: correctB }
       ],
       solutionSteps: [
-        { math: `${m1}(${c1}${let1} ${s1Str} ${k1}) + ${m2}(${c2}${let1} ${s2Str} ${k2}) = ${m1*c1}${let1} ${s1>0?'-':'+'}${m1*k1} + ${m2*c2}${let1} ${s2>0?'-':'+'}${m2*k2} = ${correctA}`, note: "Expand each bracket then collect like terms." },
-        { math: `${m3}(${c3}${let1} ${s3Str} ${k3}) - ${m4}(${c4}${let1} ${s4Str} ${k4}) = ${m3*c3}${let1} ${s3>0?'-':'+'}${m3*k3} - ${m4*c4}${let1} ${s4>0?'+':'-'}${m4*k4} = ${correctB}`, note: "The minus in front of the second bracket changes the sign of every term inside." }
+        { math: `${m1}(${cv(c1)} ${s1Str} ${k1}) + ${m2}(${cv(c2)} ${s2Str} ${k2}) = ${m1*c1}${let1} ${s1Str} ${m1*k1} + ${m2*c2}${let1} ${s2Str} ${m2*k2} = ${correctA}`, note: "Expand each bracket then collect like terms." },
+        { math: `${m3}(${cv(c3)} ${s3Str} ${k3}) - ${m4}(${cv(c4)} ${s4Str} ${k4}) = ${m3*c3}${let1} ${s3Str} ${m3*k3} - ${m4*c4}${let1} ${s4>0?'-':'+'} ${m4*k4} = ${correctB}`, note: "The minus in front of the second bracket changes the sign of every term inside." }
       ]
     };
   }
@@ -7972,8 +7990,8 @@ const TYPE_5_4a = {
       solutionSteps: [
         { math: `(${a1Str} ${b1Str})(${a2Str} ${b2Str})`, note: "" },
         { math: `= ${a1Str}(${a2Str} ${b2Str}) + (${b1})(${a2Str} ${b2Str})`, note: "Distribute each term of the first bracket across the second bracket." },
-        { math: `= (${quadCoeff}${v}² ${a1*b2 >= 0 ? '+' : ''}${a1*b2}${v}) + (${a2*b1}${v} ${constant >= 0 ? '+' : ''}${constant})`, note: "Expand each single bracket." },
-        { math: `= ${correct}`, note: `Collect like terms: ${a1*b2}${v} + ${a2*b1}${v} = ${linCoeff}${v}.` }
+        { math: `= (${quadCoeff === 1 ? '' : quadCoeff}${v}² ${a1*b2 >= 0 ? '+' : ''}${a1*b2 === 1 ? '' : a1*b2 === -1 ? '-' : a1*b2}${v}) + (${a2*b1 === 1 ? '' : a2*b1 === -1 ? '-' : a2*b1}${v} ${constant >= 0 ? '+' : ''}${constant})`, note: "Expand each single bracket." },
+        { math: `= ${correct}`, note: `Collect like terms: ${a1*b2}${v} + ${a2*b1}${v} = ${algTerm(linCoeff, v)}.` }
       ]
     };
   }
@@ -8206,7 +8224,7 @@ const TYPE_5_5c = {
       while (Math.abs(p) === Math.abs(q)) q = -randInt(1, 8);
     }
     const b = p + q, c = p * q;
-    const bStr = b >= 0 ? `+ ${b}` : `− ${Math.abs(b)}`;
+    const bStr = b >= 0 ? `+ ${b === 1 ? '' : b}` : `− ${b === -1 ? '' : Math.abs(b)}`;
     const cStr = c >= 0 ? `+ ${c}` : `− ${Math.abs(c)}`;
     const boardsAll = ["WJEC", "Edexcel", "AQA", "IGCSE"];
     const boards = [boardsAll[Math.floor(Math.random() * boardsAll.length)]];
@@ -8359,6 +8377,7 @@ const TYPE_5_7a = {
     // Build forwards from (px+q)(rx+s) to guarantee clean factorisation.
     // p, r are positive integers (p>1 to keep a>1); q, s may be negative.
     const p = randInt(2, 5), r = randInt(1, 4);
+    const gcd57 = (m, n) => (n ? gcd57(n, m % n) : Math.abs(m));
     let q, s;
     // Pick q and s that aren't trivial (avoids q=0 or s=0 degeneracy)
     // and exclude b=0 (which gives a difference-of-two-squares structure,
@@ -8371,7 +8390,7 @@ const TYPE_5_7a = {
       a = p * r;
       b = p * s + r * q;
       c = q * s;
-    } while (q === 0 || s === 0 || b === 0 || (p === r && Math.abs(q) === Math.abs(s)));
+    } while (q === 0 || s === 0 || b === 0 || (p === r && Math.abs(q) === Math.abs(s)) || gcd57(p, q) !== 1 || gcd57(r, s) !== 1);
     // Display strings: suppress coefficient 1 (e.g. 1x → x, -1x → -x)
     const bAbs = Math.abs(b);
     const bStr = b >= 0 ? `+ ${bAbs === 1 ? '' : bAbs}` : `- ${bAbs === 1 ? '' : bAbs}`;
@@ -8442,7 +8461,7 @@ const TYPE_5_8a = {
     // Part b: px² - q² with p a perfect square coefficient
     const pcoeff = perfectSquares[randInt(1, 4)]; // 4,9,16,25
     const sqrtP = sqrtMap[pcoeff];
-    let sq2; do { sq2 = perfectSquares[randInt(1, perfectSquares.length-1)]; } while (sq2 === sq1);
+    let sq2; do { sq2 = perfectSquares[randInt(1, perfectSquares.length-1)]; } while (sq2 === sq1 || gcdFrac(sqrtP, sqrtMap[sq2]) !== 1);
     const r2 = sqrtMap[sq2];
     let let2; do { let2 = letters[randInt(0, letters.length-1)]; } while (let2 === let1);
     const boardsAll = ["WJEC", "Edexcel", "AQA", "IGCSE"];
@@ -9170,8 +9189,8 @@ const TYPE_6_3a = {
     return {
       boards,
       parts: [
-        { label: "a", marks: 3, prompt: `Solve ${a}${v} + ${c} = ${b}${v} + ${d}.`, answerType: "number", correct: String(xNum) },
-        { label: "b", marks: 3, prompt: `Solve ${a2}${v} + ${c2} = ${b2}${v} + ${d2}.`, answerType: "text", correct: correct2 }
+        { label: "a", marks: 3, prompt: `Solve ${a}${v} + ${c} = ${b === 1 ? '' : b}${v} + ${d}.`, answerType: "number", correct: String(xNum) },
+        { label: "b", marks: 3, prompt: `Solve ${a2}${v} + ${c2} = ${b2 === 1 ? '' : b2}${v} + ${d2}.`, answerType: "text", correct: correct2 }
       ],
       solutionSteps: [
         { stacked:true, note:"a)", math: workingBlock([
@@ -9179,7 +9198,7 @@ const TYPE_6_3a = {
           { l:v, s:"=", r:`${xNum}`, n:"" }
         ]) },
         { stacked:true, note:"b)", math: workingBlock([
-          { l:`${diff2}${v}`, s:"=", r:`${d2-c2}`, n:"Collect v terms left, constants right." },
+          { l:`${diff2 === 1 ? '' : diff2}${v}`, s:"=", r:`${d2-c2}`, n:"Collect v terms left, constants right." },
           { l:v, s:"=", r:`${correct2}`, n:"" }
         ]) }
       ]
@@ -9277,9 +9296,9 @@ const TYPE_6_4a = {
       ],
       solutionSteps: [
         { stacked:true, note:"Working", math: workingBlock([
-          { l:`${a*b}${v} ${signStr(a*c)} ${signStr(d)}${v} ${signStr(d*e)}`, s:"=", r:`${f}${v} ${signStr(f*g)} ${kStr}`, n:"Expand every bracket." },
-          { l:`${lhsCoeff}${v} ${signStr(lhsConst)}`, s:"=", r:`${f}${v} ${signStr(rhsConst)}`, n:"Collect terms." },
-          { l:`${lhsCoeff-f}${v}`, s:"=", r:`${rhsConst - lhsConst}`, n:"Move v terms and constants across." },
+          { l:`${a*b}${v} ${signStr(a*c)} ${d === 1 ? '+ ' : signStr(d)}${v} ${signStr(d*e)}`, s:"=", r:`${f === 1 ? '' : f}${v} ${signStr(f*g)} ${kStr}`, n:"Expand every bracket." },
+          { l:`${lhsCoeff}${v}${lhsConst === 0 ? '' : ' ' + signStr(lhsConst)}`, s:"=", r:`${f === 1 ? '' : f}${v}${rhsConst === 0 ? '' : ' ' + signStr(rhsConst)}`, n:"Collect terms." },
+          { l:`${lhsCoeff-f === 1 ? '' : lhsCoeff-f}${v}`, s:"=", r:`${rhsConst - lhsConst}`, n:"Move v terms and constants across." },
           { l:v, s:"=", r:`${xSol}`, n:"" }
         ]) }
       ]
@@ -9347,7 +9366,7 @@ const TYPE_6_4b = {
       const A = randInt(2, 8);
       const D = B*(xSol+A) - C*xSol;
       prompt = `I think of a number. If I add ${A} to it and then multiply the result by ${B}, I get the same answer as multiplying the number by ${C} and then adding ${D}. Find the number.`;
-      equation = `${B}(x + ${A}) = ${C}x + ${D}`;
+      equation = `${B}(x + ${A}) = ${C === 1 ? '' : C}x + ${D}`;
       solution = xSol;
       checkStr = `${B}(${xSol}+${A}) = ${B*(xSol+A)},  ${C}(${xSol})+${D} = ${C*xSol+D}`;
     } else if (templateChoice === 1) {
@@ -9367,10 +9386,10 @@ const TYPE_6_4b = {
         solution = xS;
         checkStr = `${multM}(${xS}+${addK})+2 = ${multM*(xS+addK)+2}`;
       } else {
-        prompt = `Alex is ${A} years older than their younger sibling. In ${B} years' time, Alex will be exactly ${C} times their sibling's current age. How old is Alex now?`;
+        prompt = `Alex is ${A} years older than their younger sibling. In ${B} ${B === 1 ? "year's" : "years'"} time, Alex will be exactly ${C} times their sibling's current age. How old is Alex now?`;
         equation = `(x − ${A}) + ${B+A} = ${C}(x − ${A})`;
         solution = raviAge;
-        checkStr = `Alex now: ${raviAge}, sibling now: ${brotherAge}. In ${B} years Alex is ${raviAge+B} = ${C}×${brotherAge} ✓`;
+        checkStr = `Alex now: ${raviAge}, sibling now: ${brotherAge}. In ${B} ${B === 1 ? 'year' : 'years'} Alex is ${raviAge+B} = ${C}×${brotherAge} ✓`;
       }
     } else if (templateChoice === 2) {
       // Rectangle: perimeter is P, length is A more than width
@@ -9385,7 +9404,7 @@ const TYPE_6_4b = {
       // Three consecutive integers sum to S
       const first = randInt(5, 25);
       const S = first + (first+1) + (first+2);
-      prompt = `Three consecutive whole numbers add up to ${S}. Let the smallest be n. Write an equation and find all three numbers.`;
+      prompt = `Three consecutive whole numbers add up to ${S}. Let the smallest be n. Write an equation and use it to find n, the smallest number.`;
       equation = `n + (n+1) + (n+2) = ${S}`;
       solution = first;
       checkStr = `${first} + ${first+1} + ${first+2} = ${S} ✓`;
@@ -10154,9 +10173,9 @@ const TYPE_7_2a = {
     const c = randInt(-6, 6);
     const x1 = randInt(-4, -1), x2 = 0, x3 = randInt(1, 5);
     const y1 = m*x1 + c, y2 = m*x2 + c, y3 = m*x3 + c;
-    const cStr = c >= 0 ? `+ ${c}` : `− ${Math.abs(c)}`;
+    const cStr = c > 0 ? ` + ${c}` : c < 0 ? ` − ${Math.abs(c)}` : '';
     const mStr = m === 1 ? '' : (m === -1 ? '-' : String(m));
-    const eqStr = `y = ${mStr}x ${cStr}`;
+    const eqStr = `y = ${mStr}x${cStr}`;
     const tableHTML = `<table style="border-collapse:collapse;margin:8px 0;font-size:0.95rem;">
   <tr>
     <td style="border:2px solid #555;padding:8px 14px;font-weight:700;background:#f0ebf8;">x</td>
@@ -10308,19 +10327,19 @@ const TYPE_7_3b = {
     const m1Str = m1===1?'':m1===-1?'-':String(m1);
     const m2Str = m2===1?'':m2===-1?'-':String(m2);
     const m3Str = m3===1?'':m3===-1?'-':String(m3);
-    const signC = (c) => c>=0 ? `+ ${c}` : `− ${Math.abs(c)}`;
+    const signC = (c) => c>0 ? `+ ${c}` : c<0 ? `− ${Math.abs(c)}` : '';
     const boardsAll = ["WJEC","Edexcel","AQA","IGCSE"];
     const boards = [boardsAll[randInt(0,boardsAll.length-1)]];
     return {
       boards,
       parts: [
-        { label:"a", marks:2, prompt:`Write down the gradient and y-intercept of y = ${m1Str}x ${signC(c1)}.`, answerType:"text", correct:`m=${m1},c=${c1}`, commaOrderIndependent:true },
-        { label:"b", marks:2, prompt:`Write down the gradient and y-intercept of y = ${m2Str}x ${signC(c2)}.`, answerType:"text", correct:`m=${m2},c=${c2}`, commaOrderIndependent:true },
+        { label:"a", marks:2, prompt:`Write down the gradient and y-intercept of y = ${m1Str}x${c1 ? ' ' + signC(c1) : ''}.`, answerType:"text", correct:`m=${m1},c=${c1}`, commaOrderIndependent:true },
+        { label:"b", marks:2, prompt:`Write down the gradient and y-intercept of y = ${m2Str}x${c2 ? ' ' + signC(c2) : ''}.`, answerType:"text", correct:`m=${m2},c=${c2}`, commaOrderIndependent:true },
         { label:"c", marks:3, prompt:`Rearrange ${a3}y = ${b3===1?'':b3===-1?'−':b3}x ${signC(d3)} into y = mx + c form, then write down the gradient and y-intercept.`, answerType:"text", correct:`m=${m3},c=${c3}`, commaOrderIndependent:true }
       ],
       solutionSteps: [
-        { math:`y=${m1Str}x ${signC(c1)}: m=${m1}, c=${c1}`, note:"" },
-        { math:`y=${m2Str}x ${signC(c2)}: m=${m2}, c=${c2}`, note:"" },
+        { math:`y=${m1Str}x${c1 ? ' ' + signC(c1) : ''}: m=${m1}, c=${c1}`, note:"" },
+        { math:`y=${m2Str}x${c2 ? ' ' + signC(c2) : ''}: m=${m2}, c=${c2}`, note:"" },
         { stacked:true, note:"", math: workingBlock([
           { l:`${a3}y`, s:"=", r:`${b3}x ${signC(d3)}`, n:`Divide every term by ${a3}.` },
           { l:"y", s:"=", r:`${m3Str}x ${signC(c3)}`, n:`m=${m3}, c=${c3}.` }
@@ -10455,7 +10474,8 @@ const TYPE_7_5a = {
     // Part a: identify which of 3 lines are parallel (two share a gradient)
     const mShared = randNZ(-4, 4);
     const mOther = (() => { let m; do { m = randNZ(-4,4); } while(m===mShared); return m; })();
-    const c1 = randInt(-5, 5), c2 = randInt(-5, 5), c3 = randInt(-5, 5);
+    const c1 = randInt(-5, 5), c2 = randInt(-5, 5);
+    let c3; do { c3 = randInt(-5, 5); } while (c3 === c1);
     const signStr = (m, c) => {
       const mS = m===1?'':m===-1?'-':String(m);
       if (c === 0) return `y=${mS}x`;
@@ -10601,7 +10621,7 @@ const TYPE_8_1a = {
       boards,
       parts: [
         { label: "a", marks: 4,
-          prompt: `Solve simultaneously:<br>${a1A}x + ${bAStr} = ${c1A}<br>${a2A}x + ${bAStr} = ${c2A}`,
+          prompt: `Solve simultaneously:<br>${a1A}x + ${bAStr} = ${c1A}<br>${a2A === 1 ? '' : a2A}x + ${bAStr} = ${c2A}`,
           answerType: "text", correct: `x=${xA},y=${yA}`, commaOrderIndependent: true },
         { label: "b", marks: 4,
           prompt: `Solve simultaneously:<br>${a1B}x + ${bBStr} = ${c1B}<br>${a2B}x + ${bBStr} = ${c2B}`,
@@ -10609,14 +10629,14 @@ const TYPE_8_1a = {
       ],
       solutionSteps: [
         { stacked:true, note:"a)", math: workingBlock([
-          { full:true, text:`Multiply eq(2) by −1: −${a2A}x − ${bAStr} = −${c2A}.` },
-          { l:`${a1A-a2A}x`, s:"=", r:`${c1A-c2A}`, n:"Add the equations." },
+          { full:true, text:`Multiply eq(2) by −1: −${a2A === 1 ? '' : a2A}x − ${bAStr} = ${-c2A}.` },
+          { l:`${a1A-a2A === 1 ? '' : a1A-a2A}x`, s:"=", r:`${c1A-c2A}`, n:"Add the equations." },
           { l:"x", s:"=", r:`${xA}`, n:"" },
           { l:"y", s:"=", r:`${yA}`, n:`Substitute x=${xA} into (1).` }
         ]) },
         { stacked:true, note:"b)", math: workingBlock([
-          { full:true, text:`Multiply eq(2) by −1: −${a2B}x − ${bBStr} = −${c2B}.` },
-          { l:`${a1B-a2B}x`, s:"=", r:`${c1B-c2B}`, n:"Add the equations." },
+          { full:true, text:`Multiply eq(2) by −1: −${a2B}x − ${bBStr} = ${-c2B}.` },
+          { l:`${a1B-a2B === 1 ? '' : a1B-a2B}x`, s:"=", r:`${c1B-c2B}`, n:"Add the equations." },
           { l:"x", s:"=", r:`${xB}`, n:"" },
           { l:"y", s:"=", r:`${yB}`, n:`Substitute x=${xB} into (1).` }
         ]) }
@@ -10690,7 +10710,7 @@ const TYPE_8_2a = {
       // Ensure coefficients are genuinely different (not reducible to one multiplication)
       const g = gcd(b1, b2);
       if (g === b1 || g === b2) { attempts++; continue; } // one would divide the other
-      if (a1 === a2 && b1 === b2) { attempts++; continue; }
+      if (a1 * b2 === a2 * b1) { attempts++; continue; } // parallel/identical lines: no unique solution
       c1 = a1 * xSol + b1 * ySol;
       c2 = a2 * xSol + b2 * ySol;
       // Keep numbers manageable
@@ -10711,8 +10731,8 @@ const TYPE_8_2a = {
       ],
       solutionSteps: [
         { stacked:true, note:"", math: workingBlock([
-          { full:true, text:`Multiply eq(1) by ${m1}: ${a1*m1}x + ${b1*m1}y = ${c1*m1}. Multiply eq(2) by ${m2}: ${a2*m2}x + ${b2*m2}y = ${c2*m2}. (${b1*m1} and ${b2*m2} are opposite — they cancel on addition.)` },
-          { l:`${a1*m1+a2*m2}x`, s:"=", r:`${c1*m1+c2*m2}`, n:"Add the two equations." },
+          { full:true, text:`Multiply eq(1) by ${m1}: ${a1*m1}x + ${b1*m1}y = ${c1*m1}. Multiply eq(2) by ${m2}: ${a2*m2}x − ${-b2*m2}y = ${c2*m2}. (${b1*m1} and ${b2*m2} are opposite — they cancel on addition.)` },
+          { l:`${a1*m1+a2*m2 === 1 ? '' : a1*m1+a2*m2 === -1 ? '−' : a1*m1+a2*m2}x`, s:"=", r:`${c1*m1+c2*m2}`, n:"Add the two equations." },
           { l:"x", s:"=", r:`${xSol}`, n:"" },
           { l:"y", s:"=", r:`${ySol}`, n:`Substitute x=${xSol} into eq(1). Check in eq(2): ${a2}(${xSol}) + ${b2}(${ySol}) = ${c2} ✓` }
         ]) }
@@ -10786,7 +10806,7 @@ const TYPE_8_3a = {
       k = patternA ? a * xSol + ySol   // ax + y = k
                    : xSol + a * ySol;  // x + ay = k
       // Exclude degenerate case where (a+m)=0 for pattern A or (1+am)=0 for pattern B
-      const netCoeff = patternA ? a + m : 1 + a * m;
+      const netCoeff = a + m; // coefficient after substituting, in both patterns
       if (netCoeff === 0) { attempts++; continue; }
       if (Math.abs(c) > 8 || Math.abs(k) > 30) { attempts++; continue; }
       // Verify solution satisfies both equations before accepting
@@ -10795,7 +10815,7 @@ const TYPE_8_3a = {
       break;
     } while (attempts < 2000);
 
-    const cStr = c >= 0 ? `+ ${c}` : `− ${Math.abs(c)}`;
+    const cStr = c > 0 ? `+ ${c}` : c < 0 ? `− ${Math.abs(c)}` : '';
     const mStr = m === 1 ? '' : (m === -1 ? '-' : String(m));
     const boardsAll = ["WJEC", "Edexcel", "AQA", "IGCSE"];
     const boards = [boardsAll[randInt(0, boardsAll.length - 1)]];
@@ -10806,7 +10826,7 @@ const TYPE_8_3a = {
       workRows = [
         { full:true, text:`Substitute y=${mStr}x${cStr} into ${a}x+y=${k}:` },
         { l:`${a}x+(${mStr}x${cStr})`, s:"=", r:`${k}`, n:"" },
-        { l:`${a+m}x`, s:"=", r:`${k-c}`, n:"Collect like terms." },
+        { l:`${a+m === 1 ? '' : a+m === -1 ? '−' : a+m}x`, s:"=", r:`${k-c}`, n:"Collect like terms." },
         { l:"x", s:"=", r:`${xSol}`, n:"" },
         { l:"y", s:"=", r:`${ySol}`, n:"Substitute back into the first equation." }
       ];
@@ -10815,7 +10835,7 @@ const TYPE_8_3a = {
       workRows = [
         { full:true, text:`Substitute x=${mStr}y${cStr} into x+${a}y=${k}:` },
         { l:`(${mStr}y${cStr})+${a}y`, s:"=", r:`${k}`, n:"" },
-        { l:`${m+a}y`, s:"=", r:`${k-c}`, n:"Collect like terms." },
+        { l:`${m+a === 1 ? '' : m+a === -1 ? '−' : m+a}y`, s:"=", r:`${k-c}`, n:"Collect like terms." },
         { l:"y", s:"=", r:`${ySol}`, n:"" },
         { l:"x", s:"=", r:`${xSol}`, n:"Substitute back into the first equation." }
       ];
@@ -10943,6 +10963,9 @@ const TYPE_8_4a = {
     // Build the prompt parts
     const varNames = templateChoice === 3 ? ['x', 'y'] : ['x', 'y'];
     const solStr = `x=${sc.x},y=${sc.y}`;
+    const co = (n) => n === 1 ? '' : n === -1 ? '-' : String(n);
+    const eqn = (p, q, r) => `${co(p)}x${q < 0 ? '-' : '+'}${co(Math.abs(q))}y=${r}`;
+    const eqnShow = (p, q, r) => `${co(p)}x ${q < 0 ? '−' : '+'} ${co(Math.abs(q))}y = ${r}`;
 
     return {
       boards,
@@ -10950,7 +10973,7 @@ const TYPE_8_4a = {
         { label: "a", marks: 2,
           prompt: `${sc.context}<br>Write two equations using x for the ${sc.item1} and y for the ${sc.item2}.`,
           answerType: "text",
-          correct: `${sc.n1}x+${sc.n2}y=${sc.c1},${sc.n3}x+${sc.n4}y=${sc.c2}`,
+          correct: `${eqn(sc.n1, sc.n2, sc.c1)},${eqn(sc.n3, sc.n4, sc.c2)}`,
           commaOrderIndependent: true },
         { label: "b", marks: 4,
           prompt: `Solve your equations to find the value of x and y.`,
@@ -10959,8 +10982,8 @@ const TYPE_8_4a = {
           commaOrderIndependent: true }
       ],
       solutionSteps: [
-        { math: `${sc.n1}x + ${sc.n2}y = ${sc.c1}  (eq 1)`, note: "" },
-        { math: `${sc.n3}x + ${sc.n4}y = ${sc.c2}  (eq 2)`, note: "" },
+        { math: `${eqnShow(sc.n1, sc.n2, sc.c1)}  (eq 1)`, note: "" },
+        { math: `${eqnShow(sc.n3, sc.n4, sc.c2)}  (eq 2)`, note: "" },
         { math: `Multiply to make y-coefficients opposite, then add to eliminate y.`, note: "" },
         { math: `x = ${sc.x}, y = ${sc.y}`, note: `Check both equations ✓` }
       ]
@@ -11250,8 +11273,8 @@ const TYPE_9_1a = {
   exampleTest: {
     boards: ["WJEC", "Edexcel", "AQA", "IGCSE"],
     parts: [
-      { label: "a", marks: 2, prompt: "Solve 3x + 5 &lt; 20 and list the integer solutions below 8.", answerType: "text", correct: "1,2,3,4" },
-      { label: "b", marks: 3, prompt: "Solve 5x − 3 &gt; 2x + 9. Write the inequality and the first three integer solutions.", answerType: "text", correct: "x>4" },
+      { label: "a", marks: 2, prompt: "Solve 3x + 5 &lt; 20 and list the positive integer solutions.", answerType: "text", correct: "1,2,3,4" },
+      { label: "b", marks: 3, prompt: "Solve 5x − 3 &gt; 2x + 9, giving your answer as an inequality.", answerType: "text", correct: "x>4" },
       { label: "c", marks: 3, prompt: "Solve 3(x + 2) ≥ 2(x + 5).", answerType: "text", correct: "x>=4" },
       { label: "d", marks: 3, prompt: "Solve 8 − 2x &lt; 3x − 7. Show your working clearly.", answerType: "text", correct: "x>3" }
     ],
@@ -11289,8 +11312,9 @@ const TYPE_9_1a = {
     const b2 = (a1-a2)*xSol + b1;
     const letters = ['x','n','t','m'];
     const v = letters[randInt(0,letters.length-1)];
-    const sign1 = b1>=0?`+ ${b1}`:`− ${Math.abs(b1)}`;
-    const sign2 = b2>=0?`+ ${b2}`:`− ${Math.abs(b2)}`;
+    const sign1 = b1>0?` + ${b1}`:b1<0?` − ${Math.abs(b1)}`:'';
+    const sign2 = b2>0?` + ${b2}`:b2<0?` − ${Math.abs(b2)}`:'';
+    const cv = (n) => (n === 1 ? '' : String(n)) + v;
     const isStrict = s==='<'||s==='>';
     const correct = `${v}${s}${xSol}`;
     const boardsAll = ["WJEC","Edexcel","AQA","IGCSE"];
@@ -11300,25 +11324,24 @@ const TYPE_9_1a = {
       const lhs=a1*i+b1, rhs=a2*i+b2;
       const sat = s==='<'?lhs<rhs:s==='>'?lhs>rhs:s==='≤'?lhs<=rhs:lhs>=rhs;
       if(sat) intSols.push(i);
-      if(intSols.length>=4) break;
     }
     return {
       boards,
       parts: [
         { label:"a", marks:3,
-          prompt:`Solve the inequality ${a1}${v} ${sign1} ${s} ${a2}${v} ${sign2} and state whether ${v} = ${xSol} is a solution.`,
+          prompt:`Solve the inequality ${a1}${v}${sign1} ${s} ${cv(a2)}${sign2} and state whether ${v} = ${xSol} is a solution.`,
           answerType:"text", correct },
         { label:"b", marks:2,
-          prompt:`List the integer solutions of ${v} ${s} ${xSol} between ${xSol-4} and ${xSol+4}.`,
+          prompt:`List all the integers from ${xSol-4} to ${xSol+4} (inclusive) that satisfy ${v} ${s} ${xSol}.`,
           answerType:"text", correct: intSols.join(',') }
       ],
       solutionSteps: [
         { stacked:true, note:"Working", math: workingBlock([
-          { l:`${a1}${v} ${sign1}`, s, r:`${a2}${v} ${sign2}`, n:"Left has more of the letter — subtract the smaller term from both sides." },
-          { l:`${a1-a2}${v} ${sign1}`, s, r:`${sign2}`, n:"" },
-          { l:`${a1-a2}${v}`, s, r:`${b2-b1}`, n:"" },
+          { l:`${a1}${v}${sign1}`, s, r:`${cv(a2)}${sign2}`, n:"Left has more of the letter — subtract the smaller term from both sides." },
+          { l:`${cv(a1-a2)}${sign1}`, s, r:`${b2 < 0 ? '−' + Math.abs(b2) : b2}`, n:"" },
+          { l:`${cv(a1-a2)}`, s, r:`${b2-b1}`, n:"" },
           { l:`${v}`, s, r:`${xSol}`, n:`Divide by ${a1-a2}.` },
-          { full:true, result:true, text:`${v} = ${xSol} is ${isStrict?'NOT ':''}a solution (${isStrict?'strict':'inclusive'} inequality). Integer solutions near ${xSol}: ${intSols.join(', ')}` }
+          { full:true, result:true, text:`${v} = ${xSol} is ${isStrict?'NOT ':''}a solution (${isStrict?'strict':'inclusive'} inequality). Integers from ${xSol-4} to ${xSol+4} that satisfy it: ${intSols.join(', ')}` }
         ]) }
       ]
     };
@@ -11404,18 +11427,18 @@ const TYPE_9_2a = {
     } else if(patternChoice===1){
       const xSol=randInt(-4,3);
       const aL=randInt(1,3), aR=randInt(aL+1,5);
-      const bL=randInt(-4,4), bR_val=(aR-aL)*xSol+bL;
-      const bLStr=bL>=0?`+ ${bL}`:`− ${Math.abs(bL)}`;
-      const bRStr=bR_val>=0?`+ ${bR_val}`:`− ${Math.abs(bR_val)}`;
+      const bL=randInt(-4,4), bR_val=bL-(aR-aL)*xSol;
+      const bLStr=bL>0?` + ${bL}`:bL<0?` − ${Math.abs(bL)}`:'';
+      const bRStr=bR_val>0?` + ${bR_val}`:bR_val<0?` − ${Math.abs(bR_val)}`:'';
       const diag=inequalityNumberLine(xSol-4,xSol+4,[{val:xSol,open:false}],'left');
       return {boards, parts:[
-        {label:"a", marks:3, prompt:`Solve ${aL}${v} ${bLStr} ≥ ${aR}${v} ${bRStr}.`, answerType:"text", correct:`${v}<=${xSol}`},
+        {label:"a", marks:3, prompt:`Solve ${aL === 1 ? '' : aL}${v}${bLStr} ≥ ${aR}${v}${bRStr}.`, answerType:"text", correct:`${v}<=${xSol}`},
         {label:"b", marks:1, prompt:`Is the circle at ${xSol} on the number line open or filled?`, answerType:"text", correct:"filled"}
       ], solutionSteps:[
         { stacked:true, note:"Working", math: workingBlock([
           { full:true, text:`Move ${v} to the right (more ${v}'s there).` },
-          { l:`${bLStr.trim()}`, s:"≥", r:`${aR-aL}${v} ${bRStr.trim()}`, n:`Subtract ${aL}${v} from both sides.` },
-          { l:`${bL-bR_val}`, s:"≥", r:`${aR-aL}${v}`, n:"" },
+          { l:`${bL < 0 ? '−' + Math.abs(bL) : bL}`, s:"≥", r:`${aR-aL === 1 ? '' : aR-aL}${v} ${bRStr.trim()}`, n:`Subtract ${aL === 1 ? '' : aL}${v} from both sides.` },
+          { l:`${bL-bR_val}`, s:"≥", r:`${aR-aL === 1 ? '' : aR-aL}${v}`, n:"" },
           { l:`${v}`, s:"≤", r:`${xSol}`, n:`Divide by ${aR-aL}.` }
         ])},
         { math:diag, note:`Filled circle at ${xSol} (included), line extends left to −∞.` }
@@ -11426,11 +11449,11 @@ const TYPE_9_2a = {
       const lo=a*xLo+b, hi=a*xHi+b;
       const diag=inequalityNumberLine(xLo-3,xHi+3,[{val:xLo,open:true},{val:xHi,open:false}],'between');
       return {boards, parts:[
-        {label:"a", marks:3, prompt:`Solve the compound inequality ${lo} &lt; ${a}${v} + ${b} ≤ ${hi}.`, answerType:"text", correct:`${xLo}<${v}<=${xHi}`},
+        {label:"a", marks:3, prompt:`Solve the compound inequality ${lo} &lt; ${a}${v}${b > 0 ? ' + ' + b : b < 0 ? ' − ' + Math.abs(b) : ''} ≤ ${hi}.`, answerType:"text", correct:`${xLo}<${v}<=${xHi}`},
         {label:"b", marks:1, prompt:`On the number line, which circle is open and which is filled?`, answerType:"text", correct:`open at ${xLo}, filled at ${xHi}`}
       ], solutionSteps:[
         { stacked:true, note:"Working", math: workingBlock([
-          { l:`${lo-b}`, s:"&lt;", r:`${a}${v} ≤ ${hi-b}`, n:`Subtract ${b} from all three parts.` },
+          { l:`${lo-b}`, s:"&lt;", r:`${a}${v} ≤ ${hi-b}`, n: b === 0 ? '' : b > 0 ? `Subtract ${b} from all three parts.` : `Add ${-b} to all three parts.` },
           { l:`${xLo}`, s:"&lt;", r:`${v} ≤ ${xHi}`, n:`Divide all three parts by ${a}.` }
         ])},
         { math:diag, note:`Open circle at ${xLo} (strict), filled circle at ${xHi} (inclusive).` }
@@ -11753,7 +11776,7 @@ const TYPE_10_1b = {
     const boardsAll=["WJEC","Edexcel","AQA","IGCSE"];
     const boards=[boardsAll[randInt(0,boardsAll.length-1)]];
     const a = randNZ(1,4), b = randInt(-5,5);
-    const bStr = b>=0?`+ ${b}`:`− ${Math.abs(b)}`;
+    const bStr = b>0?` + ${b}`:b<0?` − ${Math.abs(b)}`:'';
     const isQuadratic = Math.random()<0.5;
     const posLabel = randInt(10,30);
     let terms=[], nthVal, exprStr, correctFormula;
@@ -11772,7 +11795,7 @@ const TYPE_10_1b = {
       boards,
       parts: [
         { label:"a", marks:2, prompt:`The nth term of a sequence is ${exprStr}. Write down the first four terms.`, answerType:"text", correct:terms.join(',') },
-        { label:"b", marks:2, prompt:`Find the value of the ${posLabel}${posLabel===11?'th':posLabel%10===1?'st':posLabel%10===2?'nd':posLabel%10===3?'rd':'th'} term.`, answerType:"text", correct:`${nthVal}` }
+        { label:"b", marks:2, prompt:`Find the value of the ${posLabel}${(posLabel>=11&&posLabel<=13)?'th':posLabel%10===1?'st':posLabel%10===2?'nd':posLabel%10===3?'rd':'th'} term.`, answerType:"text", correct:`${nthVal}` }
       ],
       solutionSteps: [
         { math: `n=1:${terms[0]}, n=2:${terms[1]}, n=3:${terms[2]}, n=4:${terms[3]}`, note:"Substitute each value of n." },
@@ -11841,7 +11864,7 @@ const TYPE_10_2a = {
     } else {
       const start = randInt(1,6);
       const mult = 2;
-      const sub = randInt(1,5);
+      let sub; do { sub = randInt(1,5); } while (sub === start);
       const terms = [start];
       const rows = [];
       let prev = start;
@@ -11925,7 +11948,7 @@ const TYPE_10_3a = {
     const dSign = d>=0 ? `(${d})` : `(−${Math.abs(d)})`;
     const expandedConst = A - d;
     const dStr = d===1?'n':d===-1?'−n':`${d}n`;
-    const constStr = expandedConst>=0?`+ ${expandedConst}`:`− ${Math.abs(expandedConst)}`;
+    const constStr = expandedConst>0?`+ ${expandedConst}`:expandedConst<0?`− ${Math.abs(expandedConst)}`:'';
     const correct = `${dStr} ${constStr}`.replace(/\s+/g,'');
     return {
       boards,
@@ -11935,8 +11958,8 @@ const TYPE_10_3a = {
         { math: workingBlock([
           { l:"Tn", s:"=", r:"A + (n − 1)d", n:"" },
           { l:"Tn", s:"=", r:`${A} + (n − 1)${dSign}`, n:`Substitute A = ${A}, d = ${d}.` },
-          { l:"Tn", s:"=", r:`${A} ${d>=0?'+':'−'} ${Math.abs(d)}n ${d>=0?'−':'+'} ${Math.abs(d)}`, n:"Expand the bracket." },
-          { l:"Tn", s:"=", r:`${dStr} ${constStr}`, n:"Simplify." }
+          { l:"Tn", s:"=", r:`${A} ${d>=0?'+':'−'} ${Math.abs(d) === 1 ? '' : Math.abs(d)}n ${d>=0?'−':'+'} ${Math.abs(d)}`, n:"Expand the bracket." },
+          { l:"Tn", s:"=", r:`${dStr} ${constStr}`.trim(), n:"Simplify." }
         ]), stacked:true, note:"" }
       ]
     };
@@ -12017,8 +12040,8 @@ const TYPE_10_3b = {
     const targetN = randInt(11,18);
     const targetVal = A + (targetN-1)*d;
     const constTerm = A - d;
-    const constStr = constTerm>=0 ? `+ ${constTerm}` : `− ${Math.abs(constTerm)}`;
-    const correctFormula = `${d}n${constTerm>=0?'+':''}${constTerm}`;
+    const constStr = constTerm>0 ? `+ ${constTerm}` : constTerm<0 ? `− ${Math.abs(constTerm)}` : '';
+    const correctFormula = `${d}n${constTerm>0?'+'+constTerm:constTerm<0?constTerm:''}`;
 
     return {
       boards,
@@ -12680,7 +12703,7 @@ const TYPE_11_1a = {
     const d = randInt(10,30);
     const t2=A+d, t3=t2+d, t4=t3+d;
     const constTerm = A-d;
-    const constStr = constTerm>=0?`+${constTerm}`:`${constTerm}`;
+    const constStr = constTerm>0?`+${constTerm}`:constTerm<0?`${constTerm}`:'';
     const correctFormula = `${d}n${constStr}`;
     const evalN = randInt(8,12);
     const evalVal = d*evalN+constTerm;
@@ -12872,7 +12895,7 @@ const TYPE_11_2a = {
     const dist = randInt(2,9);
     const outTime = 5*randInt(4,9);
     const stopTime = 5*randInt(4,10);
-    const backTime = 5*randInt(2,6);
+    let backTime; do { backTime = 5*randInt(2,6); } while (backTime === outTime);
     const arriveTime = outTime + stopTime + backTime;
     const outSpeed = Math.round((dist/(outTime/60))*100)/100;
     const backSpeed = Math.round((dist/(backTime/60))*100)/100;
@@ -13001,10 +13024,10 @@ const TYPE_11_2b = {
     const boardsAll=["WJEC","Edexcel","AQA","IGCSE"];
     const boards=[boardsAll[randInt(0,boardsAll.length-1)]];
 
-    const k1 = randInt(4,10), m1 = 15*randInt(2,4);       // leg1: speed=4k1 (multiple of 4), time=15m1 min
+    const k1 = randInt(4,10), m1 = randInt(2,4);       // leg1: speed=4k1 (multiple of 4), time=15m1 min
     const speed1 = 4*k1, time1 = 15*m1, dist1 = k1*m1;
     const stop1 = 5*randInt(2,6);
-    const k2 = randInt(4,10), m2 = 15*randInt(2,4);
+    const k2 = randInt(4,10), m2 = randInt(2,4);
     const speed2 = 4*k2, time2 = 15*m2, dist2 = k2*m2;
     const stop2 = 5*randInt(2,6);
     const totalOutDist = dist1 + dist2;
@@ -14053,7 +14076,10 @@ function triConstructDiagram(opts) {
       }
       svg += `<path d="${d}" fill="none" stroke="${RED}" stroke-width="1.8"/>`;
       const mid=a1+delta/2;
-      const lx=v[0]+(arcR+labelGap)*Math.cos(mid), ly=v[1]+(arcR+labelGap)*Math.sin(mid);
+      // Keep the label close to its own arc: never more than ~40% of the
+      // shorter adjacent side away from the vertex.
+      const labelDist = Math.min(arcR + labelGap, Math.max(arcR + 0.3, minAdj * 0.4));
+      const lx=v[0]+labelDist*Math.cos(mid), ly=v[1]+labelDist*Math.sin(mid);
       svg += `<text x="${sx(lx)}" y="${sy(ly)+4}" text-anchor="middle" font-size="13" font-weight="700" fill="${RED}" font-family="sans-serif">${am.label||''}</text>`;
     }
   });
@@ -14730,13 +14756,16 @@ const TYPE_12_2b = {
     const x1 = 360-a1-a2-a3;
     const diagram1 = polygon2D([[0,0],[6,0],[7,4.5],[1,5.2]], { angles:[ {vertexIndex:0, label:'x'}, {vertexIndex:1, label:a1+'°'}, {vertexIndex:2, label:a2+'°'}, {vertexIndex:3, label:a3+'°'} ] });
 
-    const p=randInt(1,4), q=randInt(20,60), r=randInt(50,100), s=randInt(1,4);
-    const t=randInt(1,10);
     // angles: p*x, q+x, r, s*x - t  => sum = (p+1+s)x + (q+r-t) = 360
+    // Choose a whole-number x first, then the fixed angle r to fit.
+    let p, q, r, s, t, xSol;
+    do {
+      p=randInt(1,4); q=randInt(20,60); s=randInt(1,4); t=randInt(1,10);
+      xSol = randInt(15, 60);
+      r = 360 - (p+1+s)*xSol - q + t;
+    } while (r < 50 || r > 130 || s*xSol - t < 10);
     const coeffSum = p+1+s;
     const constSum = q+r-t;
-    let xSol = (360-constSum)/coeffSum;
-    xSol = Math.round(xSol*10)/10;
     const ang1 = Math.round(p*xSol*10)/10, ang2 = Math.round((q+xSol)*10)/10, ang3=r, ang4=Math.round((s*xSol-t)*10)/10;
     const diagram2 = polygon2D([[0,0],[6,0],[7,4.5],[1,5.2]], { angles:[ {vertexIndex:0, label:`${p===1?'':p}x`}, {vertexIndex:1, label:`x+${q}°`}, {vertexIndex:2, label:r+'°'}, {vertexIndex:3, label:`${s===1?'':s}x−${t}°`} ] });
 
@@ -14826,10 +14855,10 @@ const TYPE_12_3a = {
     let finalLast;
     do {
       given = []; runningTotal = 0;
-      for (let i=0;i<nB-1;i++) { const v = randInt(90,150); given.push(v); runningTotal += v; }
+      for (let i=0;i<nB-1;i++) { const v = randInt(95,175); given.push(v); runningTotal += v; }
       finalLast = sumB - runningTotal;
       attempt++;
-    } while ((finalLast <= 0 || finalLast >= 179) && attempt < 30);
+    } while ((finalLast < 60 || finalLast > 175) && attempt < 5000);
 
     const divisors360 = [3,4,5,6,8,9,10,12,15,18,20,24,30,36,40,45];
     const extC = divisors360[randInt(0,divisors360.length-1)];
@@ -14920,7 +14949,7 @@ const TYPE_12_4a = {
     const letters = ['a','b','c','d'];
     return {
       boards,
-      parts: shuffled.map((item,i) => ({ label:letters[i], marks:2, prompt:`A quadrilateral has ${item.desc}. What is it called?`, answerType:"text", correct:item.name }))
+      parts: shuffled.map((item,i) => ({ label:letters[i], marks:2, prompt:`A quadrilateral ${item.desc.startsWith('a ') ? 'is' : 'has'} ${item.desc}. What is it called?`, answerType:"text", correct:item.name }))
       ,
       solutionSteps: shuffled.map((item,i) => ({ math:`${item.desc} → ${item.name}.`, note:letters[i]+')' }))
     };
@@ -15000,7 +15029,8 @@ const TYPE_12_4b = {
     const areaTri = Math.round(0.5*b1*h1*100)/100;
     const b2=randInt(4,16), h2=randInt(3,12);
     const areaPara = b2*h2;
-    const pa=randInt(4,14), pb=randInt(4,14), h3=randInt(3,12);
+    const pa=randInt(4,14), h3=randInt(3,12);
+    let pb; do { pb=randInt(4,14); } while (pb===pa);
     const areaTrap = Math.round(0.5*(pa+pb)*h3*100)/100;
 
     const diagram1 = polygon2D([[0,0],[b1,0],[b1*0.35,h1]], { sideLabels:[{edgeIndex:0,label:b1+' cm'}], extensions:[{from:[b1*0.35,h1],to:[b1*0.35,0]}] });
@@ -15105,7 +15135,7 @@ const TYPE_12_4c = {
     return {
       boards,
       parts: [
-        { label:"a", marks:2, prompt:`The diagram shows an L-shaped room, all lengths in cm. Find the two missing side lengths (top-of-notch, then the vertical step), in order.`, answerType:"text", correct:`${missingH},${missingV}` },
+        { label:"a", marks:2, prompt:`${diagram}The diagram shows an L-shaped room, all lengths in cm. Find the two missing side lengths (top-of-notch, then the vertical step), in order.`, answerType:"text", correct:`${missingH},${missingV}` },
         { label:"b", marks:2, prompt:`Find the perimeter of the room.`, answerType:"text", correct:`${perimeter}` },
         { label:"c", marks:3, prompt:`Find the area of the room.`, answerType:"text", correct:`${totalArea}` }
       ],
@@ -16016,7 +16046,7 @@ const TYPE_12_6b = {
         ]
       };
     } else if (category === 6) {
-      const nOpts3 = [5, 6, 7];
+      const nOpts3 = [5, 6];
       const n3 = nOpts3[randInt(0, nOpts3.length - 1)];
       const interior3 = Math.round(((n3 - 2) * 180 / n3) * 100) / 100;
       const rhombusAngle = Math.round((180 - interior3) * 100) / 100;
@@ -16117,7 +16147,7 @@ const TYPE_12_6c = {
         { label: "c", marks: 2, prompt: `If BC = (${side3label}) cm, show that BC also equals your answer to part (b), confirming the triangle is equilateral. State the length of BC.`, answerType: "number", correct: String(side) }
       ],
       solutionSteps: [
-        { math: `${a}w = w + ${b}, so ${a - 1}w = ${b}, w = ${w}.`, note: "a)" },
+        { math: `${a}w = w + ${b}, so ${a - 1 === 1 ? '' : a - 1}w = ${b}, w = ${w}.`, note: "a)" },
         { math: `AB = ${a}(${w}) = ${side} cm.`, note: "b)" },
         { math: `BC = ${side3label.replace('w', `(${w})`)} = ${side} cm. All three sides are ${side} cm, so the triangle is equilateral.`, note: "c)" }
       ]
@@ -16182,8 +16212,7 @@ const TYPE_13_1a = {
     const Cd = Math.PI*d, Cr = 2*Math.PI*r;
     const round3 = v => {
       if (v===0) return "0";
-      const mag = Math.pow(10, 2-Math.floor(Math.log10(Math.abs(v))));
-      return (Math.round(v*mag)/mag).toString();
+      return roundToSigFigDisplay(v, 3);
     };
     const cdR = round3(Cd), crR = round3(Cr);
     const diagram1 = circleDiagram({r:1.5, showDiameter:true, diameterLabel:d+" cm"});
@@ -16259,8 +16288,7 @@ const TYPE_13_1b = {
     const r2 = d2/2;
     const A1 = Math.PI*r1*r1, A2 = Math.PI*r2*r2;
     const round3 = v => {
-      const mag = Math.pow(10, 2-Math.floor(Math.log10(Math.abs(v))));
-      return (Math.round(v*mag)/mag).toString();
+      return roundToSigFigDisplay(v, 3);
     };
     const a1R = round3(A1), a2R = round3(A2);
     const diagram1 = circleDiagram({r:1.5, showRadius:true, radiusLabel:r1+" cm"});
@@ -16357,17 +16385,16 @@ const TYPE_13_1c = {
     const circleC = 2*Math.PI*r;
     const perimExact = 2*L + circleC;
     const round3 = v => {
-      const mag = Math.pow(10, 2-Math.floor(Math.log10(Math.abs(v))));
-      return Math.round(v*mag)/mag;
+      return roundToSigFigDisplay(v, 3);
     };
     const perimR = round3(perimExact);
-    const cost = (perimR*costPerM).toFixed(2);
+    const cost = (Math.round(perimR*costPerM*100*(1+1e-12))/100).toFixed(2);
     const circleA = Math.PI*r*r;
     const rectW = 2*r;
     const rectArea = L*rectW;
     const totalArea = circleA + rectArea;
     const totalAreaR = round3(totalArea);
-    const bagsExact = totalAreaR/coverage;
+    const bagsExact = totalArea/coverage; // the real area, not the rounded one
     const bags = Math.ceil(bagsExact - 1e-9);
     const diagram = stadiumDiagram({rectW:L*1.2, r:r*1.2, rectWLabel:L+" m", rLabel:r+" m"});
     return {
@@ -16383,7 +16410,7 @@ const TYPE_13_1c = {
         { math:`Two semicircles = one circle, r = ${r}: C = 2π×${r} = ${circleC.toFixed(6)}. Perimeter = ${L}+${L}+${circleC.toFixed(6)} = ${perimExact.toFixed(6)} = ${perimR} m (3 s.f.)`, note:"a)" },
         { math:`Cost = ${perimR} × £${costPerM.toFixed(2)} = £${cost}`, note:"b)" },
         { math:`Circle area = π×${r}² = ${circleA.toFixed(6)}. Rectangle = ${L}×${rectW.toFixed(1)} = ${rectArea.toFixed(4)}. Total = ${totalArea.toFixed(6)} = ${totalAreaR} m² (3 s.f.)`, note:"c)" },
-        { math:`${totalAreaR} ÷ ${coverage} = ${bagsExact.toFixed(2)}, so round up to ${bags} bags.`, note:"d)" }
+        { math:`${totalArea.toFixed(4)} ÷ ${coverage} = ${bagsExact.toFixed(2)}, so round up to ${bags} bags.`, note:"d)" }
       ]
     };
   }
@@ -16444,8 +16471,7 @@ const TYPE_13_2a = {
     const boardsAll=["WJEC","Edexcel","AQA","IGCSE"];
     const boards=[boardsAll[randInt(0,boardsAll.length-1)]];
     const round4 = v => {
-      const mag = Math.pow(10, 3-Math.floor(Math.log10(Math.abs(v))));
-      return (Math.round(v*mag)/mag).toString();
+      return roundToSigFigDisplay(v, 4);
     };
     const r1 = randInt(4,15);
     const arc1 = 0.25*2*Math.PI*r1;
@@ -16528,8 +16554,7 @@ const TYPE_13_3a = {
     const boardsAll=["WJEC","Edexcel","AQA","IGCSE"];
     const boards=[boardsAll[randInt(0,boardsAll.length-1)]];
     const round3 = v => {
-      const mag = Math.pow(10, 2-Math.floor(Math.log10(Math.abs(v))));
-      return Math.round(v*mag)/mag;
+      return roundToSigFigDisplay(v, 3);
     };
     const C = randInt(15,60)/10;              // metres, e.g. 1.5 - 6.0 m
     const dFromC_cm = (C/Math.PI)*100;
@@ -16687,12 +16712,12 @@ const TYPE_13_4a = {
         { full:true, heading:true, text:"a) Volume of the cylinder (r = 10, h = 2)" },
         { l:"V", s:"=", r:"πr²h = π × 10² × 2", n:"" },
         { l:"", s:"=", r:"628.3185307", n:"" },
-        { l:"", s:"=", r:"629 cm³ (3 s.f.)", n:"" },
+        { l:"", s:"=", r:"628 cm³ (3 s.f.)", n:"" },
         { full:true, heading:true, text:"b) Mass" },
         { l:"Mass", s:"=", r:"volume × density", n:"" },
         { l:"", s:"=", r:"628.3185307 × 7.6", n:"" },
         { l:"", s:"=", r:"4775.220833", n:"" },
-        { l:"", s:"=", r:"4780 grams", n:"" }
+        { l:"", s:"=", r:"4775 grams (to the nearest gram)", n:"" }
       ]), stacked:true, note:"" }
     ]
   },
@@ -16702,14 +16727,14 @@ const TYPE_13_4a = {
     parts: [
       { label:"a", marks:2, prompt:"A cylindrical pipe is 150 cm long with radius 11 cm. Find its curved surface area, correct to 3 significant figures.", answerType:"text", correct:"10400" },
       { label:"b", marks:2, prompt:"Find the volume of that same pipe, correct to 3 significant figures.", answerType:"text", correct:"57000" },
-      { label:"c", marks:2, prompt:"A steel cylinder has radius 10 cm and is 2 cm thick. Find its volume, correct to 3 significant figures.", answerType:"text", correct:"629" },
-      { label:"d", marks:2, prompt:"The steel has density 7.6 grams per cm³. Find the mass of the cylinder, to the nearest gram.", answerType:"text", correct:"4780" }
+      { label:"c", marks:2, prompt:"A steel cylinder has radius 10 cm and is 2 cm thick. Find its volume, correct to 3 significant figures.", answerType:"text", correct:"628" },
+      { label:"d", marks:2, prompt:"The steel has density 7.6 grams per cm³. Find the mass of the cylinder, to the nearest gram.", answerType:"text", correct:"4775" }
     ],
     solutionSteps: [
       { math:"A = 2πrh = 2×π×11×150 = 10367.25576 = 10400 cm² (3 s.f.)", note:"a)" },
       { math:"V = πr²h = π×11²×150 = 57019.90666 = 57000 cm³ (3 s.f.)", note:"b)" },
-      { math:"V = πr²h = π×10²×2 = 628.3185307 = 629 cm³ (3 s.f.)", note:"c)" },
-      { math:"Mass = 628.3185307 × 7.6 = 4775.220833 = 4780 grams", note:"d)" }
+      { math:"V = πr²h = π×10²×2 = 628.3185307 = 628 cm³ (3 s.f.)", note:"c)" },
+      { math:"Mass = 628.3185307 × 7.6 = 4775.220833 = 4775 grams (to the nearest gram)", note:"d)" }
     ]
   },
 
@@ -16718,8 +16743,7 @@ const TYPE_13_4a = {
     const boardsAll=["WJEC","Edexcel","AQA","IGCSE"];
     const boards=[boardsAll[randInt(0,boardsAll.length-1)]];
     const round3 = v => {
-      const mag = Math.pow(10, 2-Math.floor(Math.log10(Math.abs(v))));
-      return Math.round(v*mag)/mag;
+      return roundToSigFigDisplay(v, 3);
     };
     const r1 = randInt(5,20);
     const h1 = randInt(50,200);
@@ -17171,6 +17195,7 @@ const TYPE_14_1c = {
     function findWithCount(targetCount) {
       for (let tries=0; tries<200; tries++) {
         const ab = randInt(6,12), angle = randInt(20,70), bc = randInt(3,12);
+        if (Math.abs(ab * Math.sin(angle * Math.PI / 180) - bc) < 0.05) continue; // (near-)tangent: not a clear 1-or-2 case
         const sols = rayCircleIntersections([0,0], angle, [ab,0], bc);
         if (sols.length === targetCount) return { ab, angle, bc, sols };
       }
@@ -17562,14 +17587,14 @@ const TYPE_14_3a = {
       boards,
       parts: [
         { label:"a", marks:1, prompt:`Write down the bearing of due ${cardName}.`, answerType:"number", correct:cardVal },
-        { label:"b", marks:2, prompt:`A ship sails from ${n1a} to ${n1b} on a bearing of ${String(b1).padStart(3,'0')}°. Find the bearing to sail back from ${n1b} to ${n1a}.`, answerType:"number", correct:String(back1) },
-        { label:"c", marks:2, prompt:`A plane flies from ${n2a} to ${n2b} on a bearing of ${String(b2).padStart(3,'0')}°. Find the bearing to fly back from ${n2b} to ${n2a}.`, answerType:"number", correct:String(back2) }
+        { label:"b", marks:2, prompt:`A ship sails from ${n1a} to ${n1b} on a bearing of ${String(b1).padStart(3,'0')}°. Find the bearing to sail back from ${n1b} to ${n1a}.`, answerType:"number", correct:String(back1).padStart(3,'0') },
+        { label:"c", marks:2, prompt:`A plane flies from ${n2a} to ${n2b} on a bearing of ${String(b2).padStart(3,'0')}°. Find the bearing to fly back from ${n2b} to ${n2a}.`, answerType:"number", correct:String(back2).padStart(3,'0') }
       ],
       solutionSteps: [
         { math:`Due ${cardName} is ${cardVal}°.`, note:"a)" },
         { math: diagram, note:"b)", stacked:true },
-        { math:`${b1} is less than 180, so add 180: ${b1} + 180 = ${back1}°.`, note:"" },
-        { math:`${b2} is 180 or more, so subtract 180: ${b2} − 180 = ${back2}°.`, note:"c)" }
+        { math:`${b1} is less than 180, so add 180: ${b1} + 180 = ${String(back1).padStart(3,'0')}°.`, note:"" },
+        { math:`${b2} is 180 or more, so subtract 180: ${b2} − 180 = ${String(back2).padStart(3,'0')}°.`, note:"c)" }
       ]
     };
   }
@@ -17787,8 +17812,8 @@ const TYPE_15_1a = {
     const boards=[boardsAll[randInt(0,boardsAll.length-1)]];
 
     const px = randInt(-6,6), py = randInt(-6,6);
-    const vLineX = randInt(-4,4);
-    const hLineY = randInt(-4,4);
+    let vLineX; do { vLineX = randInt(-4,4); } while (vLineX === px);
+    let hLineY; do { hLineY = randInt(-4,4); } while (hLineY === py);
     const vImage = reflectPoint([px,py], {kind:'vertical', x:vLineX});
     const hImage = reflectPoint([px,py], {kind:'horizontal', y:hLineY});
 
@@ -17809,7 +17834,7 @@ const TYPE_15_1a = {
       parts: [
         { label:"a", marks:1, prompt:`A point (${px}, ${py}) is reflected in the line x = ${vLineX}. Find the coordinates of the image.`, answerType:"text", correct:`(${vImage[0]},${vImage[1]})` },
         { label:"b", marks:1, prompt:`A point (${px}, ${py}) is reflected in the line y = ${hLineY}. Find the coordinates of the image.`, answerType:"text", correct:`(${hImage[0]},${hImage[1]})` },
-        { label:"c", marks:2, prompt:`Rectangle S has corners (${shapePts.map(p=>`(${p[0]},${p[1]})`).join(', ')}). It is reflected in the line x = ${vLineX} to give rectangle T. What are the coordinates of the corner of T that corresponds to (${shapePts[0][0]}, ${shapePts[0][1]})?`, answerType:"text", correct:`(${shapeImg[0][0]},${shapeImg[0][1]})` }
+        { label:"c", marks:2, prompt:`Rectangle S has corners ${shapePts.map(p=>`(${p[0]}, ${p[1]})`).join(', ')}. It is reflected in the line x = ${vLineX} to give rectangle T. What are the coordinates of the corner of T that corresponds to (${shapePts[0][0]}, ${shapePts[0][1]})?`, answerType:"text", correct:`(${shapeImg[0][0]},${shapeImg[0][1]})` }
       ],
       solutionSteps: [
         { math:`x = ${vLineX}: image x-coordinate = 2×${vLineX} − (${px}) = ${vImage[0]}. y stays the same. Image: (${vImage[0]}, ${vImage[1]}).`, note:"a)" },
@@ -17872,7 +17897,7 @@ const TYPE_15_1b = {
     const yNegXImage = reflectPoint([px,py], {kind:'diagonal', m:-1, c:0});
 
     const useYX = randInt(0,1) === 0;
-    const qx = randInt(-6,6), qy = randInt(-6,6);
+    let qx, qy; do { qx = randInt(-6,6); qy = randInt(-6,6); } while (qx === qy || qx === -qy);
     const qImage = useYX ? reflectPoint([qx,qy],{kind:'diagonal',m:1,c:0}) : reflectPoint([qx,qy],{kind:'diagonal',m:-1,c:0});
 
     // Triangle P reflected in y=x+c for the diagram part (c varies so the answer isn't always the same)
@@ -19068,7 +19093,7 @@ const TYPE_16_5a = {
     parts: [
       { label:"a", marks:2, prompt:"Find the distance from A(4, 1) to B(1, 5).", answerType:"number", correct:"5" },
       { label:"b", marks:3, prompt:"Find the distance from P(−5, 5) to Q(3, 20), to 3 s.f.", answerType:"number", correct: roundToSigFigDisplay(Math.sqrt(8*8+15*15),3), exactPrecision:true },
-      { label:"c", marks:3, prompt:"A triangle has vertices A(−2,−2), B(4,−1) and C(1,3). Is it isosceles? Answer yes or no.", answerType:"text", correct:"yes" }
+      { label:"c", marks:3, prompt:"A triangle has vertices A(−2,−2), B(4,−1) and C(1,3). Is it isosceles? Answer yes or no.", answerType:"text", correct:"no" }
     ],
     solutionSteps: [
       { math:"AB² = (4−1)²+(1−5)² = 9+16 = 25. AB = 5.", note:"a)" },
@@ -19083,7 +19108,7 @@ const TYPE_16_5a = {
     const boards=[boardsAll[randInt(0,boardsAll.length-1)]];
 
     const ax=randInt(-8,8), ay=randInt(-8,8);
-    const bx=randInt(-8,8), by=randInt(-8,8);
+    let bx, by; do { bx=randInt(-8,8); by=randInt(-8,8); } while (bx===ax || by===ay);
     const distAB = Math.sqrt((bx-ax)**2+(by-ay)**2);
 
     // Build an isosceles or scalene triangle on purpose
@@ -19096,8 +19121,10 @@ const TYPE_16_5a = {
       qx = px+dx; qy = py+dy;
       rx = px-dy; ry = py+dx; // rotate the same offset 90 degrees -> same length from P
     } else {
-      qx = px+randInt(1,6); qy = py+randInt(-6,6)||py+1;
-      rx = px+randInt(-6,-1); ry = py+randInt(1,6);
+      do {
+        qx = px+randInt(1,6); qy = py+randInt(-6,6)||py+1;
+        rx = px+randInt(-6,-1); ry = py+randInt(1,6);
+      } while ((qx-px)*(ry-py) === (qy-py)*(rx-px));
     }
     const PQ2 = (qx-px)**2+(qy-py)**2, PR2 = (rx-px)**2+(ry-py)**2, QR2 = (rx-qx)**2+(ry-qy)**2;
     const isIso = (PQ2===PR2) || (PQ2===QR2) || (PR2===QR2);
@@ -19167,12 +19194,15 @@ const TYPE_16_5b = {
 
     const nameSets = [["A","B","C"],["P","Q","R"],["X","Y","Z"]];
     const [n1,n2,n3] = nameSets[randInt(0,2)];
-    const p1 = [randInt(-8,8),randInt(-8,8),randInt(-8,8)];
-    const p2 = [randInt(-8,8),randInt(-8,8),randInt(-8,8)];
-    const p3 = [randInt(-8,8),randInt(-8,8),randInt(-8,8)];
     const d2 = (u,v) => (u[0]-v[0])**2+(u[1]-v[1])**2+(u[2]-v[2])**2;
-    const s12 = d2(p1,p2), s23 = d2(p2,p3), s31 = d2(p3,p1);
-    const maxS = Math.max(s12,s23,s31);
+    let p1, p2, p3, s12, s23, s31, maxS;
+    do {
+      p1 = [randInt(-8,8),randInt(-8,8),randInt(-8,8)];
+      p2 = [randInt(-8,8),randInt(-8,8),randInt(-8,8)];
+      p3 = [randInt(-8,8),randInt(-8,8),randInt(-8,8)];
+      s12 = d2(p1,p2); s23 = d2(p2,p3); s31 = d2(p3,p1);
+      maxS = Math.max(s12,s23,s31);
+    } while ([s12,s23,s31].filter(v => v === maxS).length > 1 || Math.sqrt(maxS) >= Math.sqrt(s12) + Math.sqrt(s23) + Math.sqrt(s31) - Math.sqrt(maxS) - 1e-9); // one longest side; a real triangle
     const longest = maxS===s12 ? `${n1}${n2}` : (maxS===s23 ? `${n2}${n3}` : `${n3}${n1}`);
 
     return {
@@ -19340,8 +19370,8 @@ const TYPE_17_1a = {
         { label:"b", marks:3, prompt:`Find the missing length y.<br>${diagram2}`, answerType:"number", correct: roundToSigFigDisplay(hyp2,3), exactPrecision:true }
       ],
       solutionSteps: [
-        { math:`a) x = ${hyp1} × sin ${theta1}° = ${opp1}. x = ${roundToSigFigDisplay(opp1,3)} cm (3 s.f.)`, note:"" },
-        { math:`b) ${opp2} = y × sin ${theta2}°, so y = ${opp2} ÷ sin ${theta2}° = ${hyp2}. y = ${roundToSigFigDisplay(hyp2,3)} cm (3 s.f.)`, note:"" }
+        { math:`a) x = ${hyp1} × sin ${theta1}° = ${+opp1.toPrecision(10)}. x = ${roundToSigFigDisplay(opp1,3)} cm (3 s.f.)`, note:"" },
+        { math:`b) ${opp2} = y × sin ${theta2}°, so y = ${opp2} ÷ sin ${theta2}° = ${+hyp2.toPrecision(10)}. y = ${roundToSigFigDisplay(hyp2,3)} cm (3 s.f.)`, note:"" }
       ]
     };
   }
@@ -19400,8 +19430,8 @@ const TYPE_17_2a = {
         { label:"b", marks:3, prompt:`Find the missing length p.<br>${diagram2}`, answerType:"number", correct: roundToSigFigDisplay(hyp2,3), exactPrecision:true }
       ],
       solutionSteps: [
-        { math:`a) x = ${hyp1} × cos ${theta1}° = ${adj1}. x = ${roundToSigFigDisplay(adj1,3)} cm (3 s.f.)`, note:"" },
-        { math:`b) ${adj2} = p × cos ${theta2}°, so p = ${adj2} ÷ cos ${theta2}° = ${hyp2}. p = ${roundToSigFigDisplay(hyp2,3)} cm (3 s.f.)`, note:"" }
+        { math:`a) x = ${hyp1} × cos ${theta1}° = ${+adj1.toPrecision(10)}. x = ${roundToSigFigDisplay(adj1,3)} cm (3 s.f.)`, note:"" },
+        { math:`b) ${adj2} = p × cos ${theta2}°, so p = ${adj2} ÷ cos ${theta2}° = ${+hyp2.toPrecision(10)}. p = ${roundToSigFigDisplay(hyp2,3)} cm (3 s.f.)`, note:"" }
       ]
     };
   }
@@ -19458,8 +19488,8 @@ const TYPE_17_3a = {
         { label:"b", marks:3, prompt:`Find the missing length y.<br>${diagram2}`, answerType:"number", correct: roundToSigFigDisplay(adj2,3), exactPrecision:true }
       ],
       solutionSteps: [
-        { math:`a) x = ${adj1} × tan ${theta1}° = ${opp1}. x = ${roundToSigFigDisplay(opp1,3)} cm (3 s.f.)`, note:"" },
-        { math:`b) ${opp2} = y × tan ${theta2}°, so y = ${opp2} ÷ tan ${theta2}° = ${adj2}. y = ${roundToSigFigDisplay(adj2,3)} cm (3 s.f.)`, note:"" }
+        { math:`a) x = ${adj1} × tan ${theta1}° = ${+opp1.toPrecision(10)}. x = ${roundToSigFigDisplay(opp1,3)} cm (3 s.f.)`, note:"" },
+        { math:`b) ${opp2} = y × tan ${theta2}°, so y = ${opp2} ÷ tan ${theta2}° = ${+adj2.toPrecision(10)}. y = ${roundToSigFigDisplay(adj2,3)} cm (3 s.f.)`, note:"" }
       ]
     };
   }
@@ -20212,7 +20242,7 @@ const TYPE_18_1b = {
     return {
       boards,
       parts: [
-        { label:"a", marks:2, prompt:`The plan view (${rows} rows × ${cols} columns) shown gives the number of cubes stacked on each square. Find the total number of cubes used.`, answerType:"number", correct:String(total) },
+        { label:"a", marks:2, prompt:`${diagram}The plan view (${rows} rows × ${cols} columns) shown gives the number of cubes stacked on each square. Find the total number of cubes used.`, answerType:"number", correct:String(total) },
         { label:"b", marks:1, prompt:"How many squares make up the footprint of this shape (i.e. have at least one cube on them)?", answerType:"number", correct:String(footprint) },
         { label:"c", marks:1, prompt:"What is the height of the tallest stack?", answerType:"number", correct:String(tallest) }
       ],
@@ -20283,7 +20313,7 @@ const TYPE_18_1c = {
     const parts = [n1, n2].map((n, i) => ({
       label: String.fromCharCode(97+i),
       marks: 1,
-      prompt: `Does this net fold up to make a cube? Answer yes or no.`,
+      prompt: `${hexominoNetDiagram(n.cells)}Does this net fold up to make a cube? Answer yes or no.`,
       answerType: "text",
       correct: n.isValid ? "yes" : "no"
     }));
@@ -22586,7 +22616,7 @@ const TYPE_20_2c = {
     return {
       boards,
       parts: [
-        { label:"a", marks:2, prompt:"The Venn diagram (shown) has sets A, B and C. Work out the total for set A.", answerType:"number", correct: String(totalA) },
+        { label:"a", marks:2, prompt:`${diagram}The Venn diagram shown has sets A, B and C. Work out the total for set A.`, answerType:"number", correct: String(totalA) },
         { label:"b", marks:2, prompt:"Work out the total number of elements in 𝓔.", answerType:"number", correct: String(grandTotal) }
       ],
       solutionSteps: [
@@ -22640,7 +22670,8 @@ const TYPE_20_3a = {
 
     const maxE = randInt(12,20);
     const universal = []; for (let v=1; v<=maxE; v++) universal.push(v);
-    const dA = randInt(2,4), dB = randInt(2,5);
+    const dA = randInt(2,4);
+    let dB; do { dB = randInt(2,5); } while (dB === dA);
     const A = universal.filter(v => v % dA === 0);
     const B = universal.filter(v => v % dB === 0);
 
@@ -22716,7 +22747,8 @@ const TYPE_20_3b = {
 
     const maxE = randInt(12,20);
     const universal = []; for (let v=1; v<=maxE; v++) universal.push(v);
-    const dA = randInt(2,3), dB = randInt(3,4), dC = randInt(4,5);
+    let dA, dB, dC;
+    do { dA = randInt(2,3); dB = randInt(3,4); dC = randInt(4,5); } while (dA === dB || dB === dC);
     const A = universal.filter(v => v % dA === 0);
     const B = universal.filter(v => v % dB === 0);
     const C = universal.filter(v => v % dC === 0);
@@ -22897,7 +22929,8 @@ const TYPE_21_1a = {
     const base = randInt(10,40);
     const values = [base, base+1, base+2, base+3, base+4];
     // keep the same well-behaved frequency shape as the study example, scaled
-    const freqs = [randInt(1,3), randInt(4,7), randInt(6,9), randInt(3,6), randInt(1,3)];
+    let freqs;
+    do { freqs = [randInt(1,3), randInt(4,7), randInt(6,9), randInt(3,6), randInt(1,3)]; } while (freqs.filter(f => f === Math.max(...freqs)).length > 1); // one mode
     const stats = computeFreqTableStats(values, freqs);
 
     const contexts = [
@@ -22907,17 +22940,18 @@ const TYPE_21_1a = {
     ];
     const ctx = contexts[randInt(0,contexts.length-1)];
 
+    const mean1 = +(Math.round(stats.mean * 10 * (1 + 1e-12)) / 10).toFixed(1);
     const table = dataTable(["Value","f"], values.map((v,i) => [String(v), String(freqs[i])]));
 
     return {
       boards,
       parts: [
-        { label:"a", marks:3, prompt:`A sample of ${stats.n} ${ctx[0]} is recorded, showing ${ctx[1]}:<br>${table}Calculate the mean.`, answerType:"number", correct: String(stats.mean) },
+        { label:"a", marks:3, prompt:`A sample of ${stats.n} ${ctx[0]} is recorded, showing ${ctx[1]}:<br>${table}Calculate the mean. Give your answer to 1 decimal place if it is not a whole number.`, answerType:"number", correct: String(mean1) },
         { label:"b", marks:2, prompt:"Write down the mode.", answerType:"number", correct: String(stats.mode) },
         { label:"c", marks:2, prompt:"Find the median.", answerType:"number", correct: String(stats.median) }
       ],
       solutionSteps: [
-        { math: `Mean = ${stats.sumXF} ÷ ${stats.n} = ${stats.mean}`, note:"a)" },
+        { math: `Mean = ${stats.sumXF} ÷ ${stats.n} = ${Math.abs(stats.mean - mean1) < 1e-9 ? mean1 :+stats.mean.toFixed(4) + ' = ' + mean1 + ' (1 d.p.)'}`, note:"a)" },
         { math: `The highest frequency is at ${stats.mode}, so the mode is ${stats.mode}.`, note:"b)" },
         { math: `n=${stats.n}, so the median is ${stats.n % 2 === 0 ? 'the average of the middle two values' : 'the middle value'}: median = ${stats.median}`, note:"c)" }
       ]
@@ -22978,7 +23012,7 @@ const TYPE_21_1b = {
     const sumF = freqs.reduce((a,b)=>a+b,0);
     const fxVals = midpoints.map((x,i) => x*freqs[i]);
     const sumFX = fxVals.reduce((a,b)=>a+b,0);
-    const mean = Math.round((sumFX/sumF)*100)/100;
+    const mean = Math.round((sumFX/sumF)*100*(1+1e-12))/100;
 
     const contexts = [
       ["plant heights", "cm", "H"],
@@ -23235,7 +23269,7 @@ const TYPE_21_2b = {
 
   topicTestGenerator: function() {
     function randInt(min,max){return Math.floor(Math.random()*(max-min+1))+min;}
-    function round2(x){ return Math.round(x*100)/100; }
+    function round2(x){ return Math.round(x*100*(1+1e-12))/100; }
     const boardsAll=["WJEC","Edexcel","AQA","IGCSE"];
     const boards=[boardsAll[randInt(0,boardsAll.length-1)]];
 
@@ -23687,7 +23721,7 @@ const TYPE_21_3c = {
 
   topicTestGenerator: function() {
     function randInt(min,max){return Math.floor(Math.random()*(max-min+1))+min;}
-    function round1(x){ return Math.round(x*10)/10; }
+    function round1(x){ return Math.sign(x)*Math.round(Math.abs(x)*10*(1+1e-12))/10; }
     const boardsAll=["WJEC","Edexcel","AQA","IGCSE"];
     const boards=[boardsAll[randInt(0,boardsAll.length-1)]];
 
@@ -23701,7 +23735,7 @@ const TYPE_21_3c = {
 
     const pctChoices = [20,25,30,40,50,60,75,80];
     const pct = pctChoices[randInt(0,pctChoices.length-1)];
-    const targetCount = round1(total*pct/100);
+    const targetCount = total*pct/100; // exact (e.g. 18.75)
     const value = round1(histValueAtCount(classes, freqs, targetCount));
 
     const contexts = [
@@ -23720,13 +23754,13 @@ const TYPE_21_3c = {
     let running = 0, classIdx = -1, prevCum = 0;
     for (let i=0;i<classCount;i++) { prevCum = running; running += freqs[i]; if (running >= targetCount) { classIdx = i; break; } }
     const [low,high] = classes[classIdx];
-    const into = round1(targetCount - prevCum);
-    const proportion = round1(into/freqs[classIdx]*1000)/1000;
+    const into = targetCount - prevCum;
+    const proportion = +(into/freqs[classIdx]).toFixed(4);
 
     return {
       boards,
       parts: [
-        { label:"a", marks:4, prompt:`${total} ${ctx[1]} were surveyed for ${ctx[0]}, grouped:<br>${givenTable}Find an estimate of the value below which ${pct}% of the data lies.`, answerType:"number", correct: String(value) }
+        { label:"a", marks:4, prompt:`${total} ${ctx[1]} were surveyed for ${ctx[0]}, grouped:<br>${givenTable}Find an estimate of the value below which ${pct}% of the data lies. Give your answer to 1 decimal place.`, answerType:"number", correct: String(value) }
       ],
       solutionSteps: [
         { math: workingTable, stacked:true, note:"" },
@@ -23768,13 +23802,13 @@ const TYPE_21_4a = {
   exampleTest: {
     boards: ["WJEC", "Edexcel", "AQA", "IGCSE"],
     parts: [
-      { label: "a", marks: 2, prompt: "Here are the number of goals scored by a team in 7 matches: 2, 0, 3, 2, 1, 2, 4. Find the mean, to 1 decimal place.", answerType: "number", correct: "2", exactPrecision: true },
+      { label: "a", marks: 2, prompt: "Here are the number of goals scored by a team in 7 matches: 2, 0, 3, 2, 1, 2, 4. Find the mean, to 1 decimal place.", answerType: "number", correct: "2.0", exactPrecision: true },
       { label: "b", marks: 2, prompt: "Find the median.", answerType: "number", correct: "2" },
       { label: "c", marks: 1, prompt: "Find the mode.", answerType: "number", correct: "2" },
       { label: "d", marks: 1, prompt: "Find the range.", answerType: "number", correct: "4" }
     ],
     solutionSteps: [
-      { math: "Mean = (2+0+3+2+1+2+4) &divide; 7 = 14 &divide; 7 = 2", note: "a)" },
+      { math: "Mean = (2+0+3+2+1+2+4) &divide; 7 = 14 &divide; 7 = 2.0 (1 d.p.)", note: "a)" },
       { math: "In order: 0, 1, 2, 2, 2, 3, 4 — the middle (4th) value is 2.", note: "b)" },
       { math: "2 appears 3 times, more than any other value, so the mode is 2.", note: "c)" },
       { math: "Range = 4 &minus; 0 = 4", note: "d)" }
@@ -23813,13 +23847,13 @@ const TYPE_21_4a = {
     return {
       boards,
       parts: [
-        { label: "a", marks: 2, prompt: `Here are ${ctx[0]}: ${listStr}. Find the mean, to 1 decimal place.`, answerType: "number", correct: String(mean), exactPrecision: true },
+        { label: "a", marks: 2, prompt: `Here are ${ctx[0]}: ${listStr}. Find the mean, to 1 decimal place.`, answerType: "number", correct: mean.toFixed(1), exactPrecision: true },
         { label: "b", marks: 2, prompt: "Find the median.", answerType: "number", correct: String(median) },
         { label: "c", marks: 1, prompt: "Find the mode.", answerType: "number", correct: String(modeVal) },
         { label: "d", marks: 1, prompt: "Find the range.", answerType: "number", correct: String(range) }
       ],
       solutionSteps: [
-        { math: `Mean = (${list.join("+")}) &divide; 7 = ${sum} &divide; 7 = ${mean}`, note: "a)" },
+        { math: `Mean = (${list.join("+")}) &divide; 7 = ${sum} &divide; 7 = ${mean.toFixed(1)}`, note: "a)" },
         { math: `In order: ${sorted.join(", ")} — the middle (4th) value is ${median}.`, note: "b)" },
         { math: `${modeVal} appears twice, more than any other value, so the mode is ${modeVal}.`, note: "c)" },
         { math: `Range = ${sorted[6]} &minus; ${sorted[0]} = ${range}`, note: "d)" }
@@ -23959,7 +23993,7 @@ const TYPE_21_5a = {
 
     // Totals chosen so every angle below comes out as a whole number of
     // degrees by construction, never by luck.
-    const totals = [20, 24, 30, 36, 40, 48, 60, 72];
+    const totals = [20, 24, 30, 36, 40, 45, 60, 72];
     const total = totals[randInt(0, totals.length - 1)];
 
     // Split total into three positive categories.
@@ -24063,7 +24097,7 @@ const TYPE_21_6a = {
     boards: ["WJEC", "Edexcel", "AQA", "IGCSE"],
     parts: [
       { label: "a", marks: 1, prompt: "A scatter graph shows that as a car's age increases, its value decreases. What type of correlation is this?", answerType: "text", correct: "negative" },
-      { label: "b", marks: 3, prompt: "The line of best fit on a scatter graph passes through (5, 30) and (15, 90). Estimate the y-value when x = 9.", answerType: "number", correct: "66" }
+      { label: "b", marks: 3, prompt: "The line of best fit on a scatter graph passes through (5, 30) and (15, 90). Estimate the y-value when x = 9.", answerType: "number", correct: "54" }
     ],
     solutionSteps: [
       { math: "Value decreases as age increases — this is negative correlation.", note: "a)" },
@@ -24230,7 +24264,7 @@ const TYPE_22_1a = {
     const b = randInt(Math.round(total * 0.1), Math.round(total * 0.3));
     const c = total - a - b;
 
-    const pA = a / total, pC = c / total, pNotA = 1 - pA;
+    const pA = a / total, pC = c / total, pNotA = (total - a) / total;
 
     return {
       boards,
@@ -24409,7 +24443,7 @@ const TYPE_22_1c = {
       boards,
       parts: [
         { label: "a", marks: 2, prompt: `The table shows information about ${grandTotal} ${ctx.item}s:<br>${table}Find the probability that a randomly chosen "${ctx.rowName}" ${ctx.item} is "${ctx.colName}".`, answerType: "number", correct: String(pA) },
-        { label: "b", marks: 2, prompt: `Find the probability that a randomly chosen "${ctx.colName}" ${ctx.item} is one that "${ctx.row2Name}".`, answerType: "number", correct: String(pB) },
+        { label: "b", marks: 2, prompt: `Find the probability that a randomly chosen "${ctx.colName}" ${ctx.item} is in the "${ctx.row2Name}" group.`, answerType: "number", correct: String(pB) },
         { label: "c", marks: 2, prompt: `Find the probability that a randomly chosen ${ctx.item} (out of all ${grandTotal}) is a "${ctx.rowName}, ${ctx.colName}" ${ctx.item}.`, answerType: "number", correct: String(pC) }
       ],
       solutionSteps: [
@@ -25188,20 +25222,20 @@ const TYPE_23_2a = {
     const boards = [boardsAll[randInt(0, boardsAll.length - 1)]];
 
     // Part a: (a - b × c) × d
-    const a1 = rand1dp(10, 20), b1 = rand1dp(1, 4), c1 = rand1dp(1, 4), d1 = rand1dp(1, 4);
-    const inner1 = Math.round((a1 - b1 * c1) * 1000) / 1000;
+    let a1, b1, c1, d1, inner1;
+    do { a1 = rand1dp(10, 20); b1 = rand1dp(1, 4); c1 = rand1dp(1, 4); d1 = rand1dp(1, 4); inner1 = Math.round((a1 - b1 * c1) * 1000) / 1000; } while (Math.abs(inner1) < 0.5);
     const raw1 = inner1 * d1;
     const ans1 = roundToSigFigDisplay(raw1, 3);
 
     // Part b: (a × b − c)^2
-    const a2 = rand1dp(1, 4), b2 = rand1dp(1, 4), c2 = rand1dp(1, 6);
-    const inner2 = Math.round((a2 * b2 - c2) * 1000) / 1000;
+    let a2, b2, c2, inner2;
+    do { a2 = rand1dp(1, 4); b2 = rand1dp(1, 4); c2 = rand1dp(1, 6); inner2 = Math.round((a2 * b2 - c2) * 1000) / 1000; } while (Math.abs(inner2) < 0.5);
     const raw2 = inner2 * inner2;
     const ans2 = roundToSigFigDisplay(raw2, 3);
 
     // Part c: e × (f - g × h)^2  -- the study-style compound one
-    const e3 = rand1dp(1, 4), f3 = rand1dp(2, 6), g3 = rand1dp(1, 2), h3 = rand1dp(1, 2);
-    const inner3 = Math.round((f3 - g3 * h3) * 1000) / 1000;
+    let e3, f3, g3, h3, inner3;
+    do { e3 = rand1dp(1, 4); f3 = rand1dp(2, 6); g3 = rand1dp(1, 2); h3 = rand1dp(1, 2); inner3 = Math.round((f3 - g3 * h3) * 1000) / 1000; } while (Math.abs(inner3) < 0.5);
     const raw3 = e3 * inner3 * inner3;
     const ans3 = roundToSigFigDisplay(raw3, 3);
 
@@ -25280,7 +25314,7 @@ const TYPE_23_2b = {
     const denominatorVal = mantQ * Math.pow(10, expQ);
     const raw3 = numeratorVal / denominatorVal;
     const mag3 = Math.floor(Math.log10(Math.abs(raw3)));
-    let mant3 = Math.round((raw3 / Math.pow(10, mag3)) * 100) / 100;
+    let mant3 = Math.round((raw3 / Math.pow(10, mag3)) * 100 * (1 + 1e-12)) / 100;
     let exp3 = mag3;
     if (mant3 >= 10) { mant3 = Math.round((mant3 / 10) * 100) / 100; exp3 += 1; }
 
@@ -25291,12 +25325,12 @@ const TYPE_23_2b = {
       parts: [
         { label: "a", marks: 3, prompt: `Use your calculator to find the value of √(${a1} + ${b1} × ${c1}), correct to 3 significant figures.`, answerType: "number", correct: ans1, exactPrecision: true },
         { label: "b", marks: 3, prompt: `Use your calculator to find the value of (${a2} + ${b2} × ${c2}) ÷ (${d2} − ${e2}²), correct to 3 significant figures.`, answerType: "number", correct: ans2, exactPrecision: true },
-        { label: "c", marks: 3, prompt: `Use your calculator to work out the value of (${mantP} × 10${supDigits(expP)}) ÷ (${mantQ} × 10⁻${supDigits(expQ)}). Give your answer in standard form, correct to 3 significant figures.`, answerType: "text", correct: `${mant3}x10^${exp3}` }
+        { label: "c", marks: 3, prompt: `Use your calculator to work out the value of (${mantP} × 10${supDigits(expP)}) ÷ (${mantQ} × 10⁻${supDigits(expQ)}). Give your answer in standard form, correct to 3 significant figures.`, answerType: "text", correct: `${mant3.toFixed(2)}x10^${exp3}` }
       ],
       solutionSteps: [
         { math: `${a1} + ${b1} × ${c1} = ${inner1}, then √${inner1} = ${Math.round(raw1 * 1e6) / 1e6} = ${ans1} (3 s.f.)`, note: "a)" },
         { math: `Top: ${a2} + ${b2} × ${c2} = ${top2}. Bottom: ${d2} − ${e2}² = ${bottom2}. ${top2} ÷ ${bottom2} = ${Math.round(raw2 * 1e6) / 1e6} = ${ans2} (3 s.f.)`, note: "b)" },
-        { math: `(${mantP} × 10${supDigits(expP)}) ÷ (${mantQ} × 10⁻${supDigits(expQ)}) ≈ ${mant3} × 10${supDigits(exp3)}`, note: "c)" }
+        { math: `(${mantP} × 10${supDigits(expP)}) ÷ (${mantQ} × 10⁻${supDigits(expQ)}) ≈ ${mant3.toFixed(2)} × 10${supDigits(exp3)}`, note: "c)" }
       ]
     };
   }
@@ -26051,7 +26085,7 @@ const TYPE_24_1a = {
     const x1 = randInt(2, 12) * 2; // even, plays nicely with 0.5-type k values
     const y1 = Math.round(k * x1 * 100) / 100;
 
-    const x2 = randInt(2, 20);
+    let x2; do { x2 = randInt(2, 20); } while (x2 === x1);
     const y2 = Math.round(k * x2 * 100) / 100;
 
     const y3 = randInt(2, 20) * k; // choose a y3 that's a clean multiple of k
@@ -26220,7 +26254,7 @@ const TYPE_24_1c = {
     // part b: another c value, compute T exactly using the fraction k
     const c2 = randInt(2, 15);
     const T2raw = (kNum * Math.pow(c2, 2)) / kDen;
-    const T2 = Math.round(T2raw * 100) / 100;
+    const T2 = (Math.round(T2raw * 100 * (1 + 1e-12)) / 100).toFixed(2);
 
     // part c: choose c3 so that T3 = k * c3^power is a whole number (clean "find c" direction)
     const c3 = randInt(2, 12);
@@ -26229,8 +26263,8 @@ const TYPE_24_1c = {
 
     const kFracStr = kDen === 1 ? String(kNum) : `${kNum}/${kDen}`;
     const formulaStr = kDen === 1
-      ? `${ctx.varT}=${kNum}${ctx.varC}^${2}`
-      : `${ctx.varT}=${kNum}${ctx.varC}^${2}/${kDen}`;
+      ? `${ctx.varT}=${kNum === 1 ? '' : kNum}${ctx.varC}^${2}`
+      : `${ctx.varT}=${kNum === 1 ? '' : kNum}${ctx.varC}^${2}/${kDen}`;
 
     return {
       boards,
@@ -26295,7 +26329,7 @@ const TYPE_24_2a = {
     const x1 = divisors[randInt(0, divisors.length - 1)];
     const y1 = k / x1;
 
-    const x2 = divisors[randInt(0, divisors.length - 1)];
+    let x2; do { x2 = divisors[randInt(0, divisors.length - 1)]; } while (x2 === x1);
     const y2 = k / x2;
 
     const y3 = divisors[randInt(0, divisors.length - 1)]; // reuse divisor list as a valid y3
@@ -27656,7 +27690,7 @@ const TYPE_25_5a = {
 
   study: {
     boards: ["WJEC", "Edexcel", "AQA", "IGCSE"],
-    question: "Use the iterative formula x_{n+1} = &#8731;(2x_n + 5), with x&#8320; = 2, to find x&#8321;, x&#8322; and x&#8323;, giving x&#8323; to 3 decimal places.",
+    question: "Use the iterative formula x<sub>n+1</sub> = &#8731;(2x<sub>n</sub> + 5), with x&#8320; = 2, to find x&#8321;, x&#8322; and x&#8323;, giving x&#8323; to 3 decimal places.",
     solutionSteps: [
       { math: "x&#8321; = &#8731;(2×2 + 5) = &#8731;9 = 2.080083823...", note: "Substitute x₀ = 2 into the formula." },
       { math: "x&#8322; = &#8731;(2×2.080083823 + 5) = &#8731;9.160167646 = 2.093762368...", note: "Substitute x₁ to get x₂." },
@@ -27668,13 +27702,13 @@ const TYPE_25_5a = {
   exampleTest: {
     boards: ["WJEC", "Edexcel", "AQA", "IGCSE"],
     parts: [
-      { label: "a", marks: 4, prompt: "Use the iterative formula x_{n+1} = &#8731;(3x_n + 2), with x&#8320; = 1, to find x&#8323;, giving your answer to 3 decimal places.", answerType: "number", correct: "1.696", exactPrecision: true }
+      { label: "a", marks: 4, prompt: "Use the iterative formula x<sub>n+1</sub> = &#8731;(3x<sub>n</sub> + 2), with x&#8320; = 1, to find x&#8323;, giving your answer to 3 decimal places.", answerType: "number", correct: "1.981", exactPrecision: true }
     ],
     solutionSteps: [
       { math: "x&#8321; = &#8731;(3×1+2) = &#8731;5 = 1.709975947...", note: "" },
-      { math: "x&#8322; = &#8731;(3×1.709975947+2) = &#8731;7.129927841 = 1.925738...", note: "" },
-      { math: "x&#8323; = &#8731;(3×1.925738+2) = &#8731;7.777214 = 1.981...", note: "" },
-      { math: "Recomputing carefully with full decimal accuracy at each step gives x&#8323; = 1.696 (3 d.p.).", note: "Always carry full calculator accuracy between steps — only round the final answer." }
+      { math: "x&#8322; = &#8731;(3×1.709975947+2) = &#8731;7.129927841 = 1.924694084...", note: "" },
+      { math: "x&#8323; = &#8731;(3×1.924694084+2) = &#8731;7.774082253 = 1.980993469...", note: "" },
+      { math: "x&#8323; = 1.981 (3 d.p.)", note: "Always carry full calculator accuracy between steps — only round the final answer." }
     ]
   },
 
@@ -27703,12 +27737,12 @@ const TYPE_25_5a = {
     }
 
     const x1 = sequence[1], x2 = sequence[2], x3 = sequence[3];
-    const x3rounded = Math.round(x3 * 1000) / 1000;
+    const x3rounded = (Math.round(x3 * 1000 * (1 + 1e-12)) / 1000).toFixed(3);
 
     return {
       boards,
       parts: [
-        { label: "a", marks: 4, prompt: `Use the iterative formula x_{n+1} = &#8731;(${p}x_n + ${q}), with x&#8320; = ${x0}, to find x&#8323;, giving your answer to 3 decimal places.`, answerType: "number", correct: String(x3rounded), exactPrecision: true }
+        { label: "a", marks: 4, prompt: `Use the iterative formula x<sub>n+1</sub> = &#8731;(${p === 1 ? '' : p}x<sub>n</sub> + ${q}), with x&#8320; = ${x0}, to find x&#8323;, giving your answer to 3 decimal places.`, answerType: "number", correct: String(x3rounded), exactPrecision: true }
       ],
       solutionSteps: [
         { math: `x&#8321; = &#8731;(${p}×${x0} + ${q}) = &#8731;${p * x0 + q} = ${x1.toFixed(6)}...`, note: "Substitute x₀ into the formula." },
@@ -27893,8 +27927,8 @@ const TYPE_26_1c = {
   exampleTest: {
     boards: ["WJEC", "Edexcel", "AQA", "IGCSE"],
     parts: [
-      { label: "a", marks: 3, prompt: "Write (4 + 3√5) / √5 in a form that does not have a surd in the denominator. Give your answer as (a√5 + b) / c.", answerType: "text", correct: "4√5+15/5" },
-      { label: "b", marks: 3, prompt: "Write (5 + 2√3) / √3 in a form that does not have a surd in the denominator. Give your answer as (a√3 + b) / c.", answerType: "text", correct: "5√3+6/3" }
+      { label: "a", marks: 3, prompt: "Write (4 + 3√5) / √5 in a form that does not have a surd in the denominator. Give your answer as (a√5 + b) / c.", answerType: "text", correct: "(4√5+15)/5" },
+      { label: "b", marks: 3, prompt: "Write (5 + 2√3) / √3 in a form that does not have a surd in the denominator. Give your answer as (a√3 + b) / c.", answerType: "text", correct: "(5√3+6)/3" }
     ],
     solutionSteps: [
       { math: "(4 + 3√5) / √5 = (4 + 3√5) × √5 / (√5 × √5) = (4√5 + 3×5) / 5 = (4√5 + 15) / 5", note: "a)", stacked: true },
@@ -27924,7 +27958,7 @@ const TYPE_26_1c = {
     function answerStr(q) {
       // present in unsimplified (a√r + b)/r form for consistency & to avoid
       // ambiguity about which simplification path the student took
-      return `${q.p}√${q.r}+${q.rationalPart}/${q.r}`;
+      return `(${q.p}√${q.r}+${q.rationalPart})/${q.r}`;
     }
 
     return {
@@ -28388,7 +28422,9 @@ const TYPE_26_2c = {
     }
     function eqText(eq) {
       const op = eq.isSubtract ? "−" : "+";
-      return `${termStr(eq.p, eq.d1)} ${op} ${termStr(eq.q, eq.d2)} = ${eq.n}/${eq.d3}`;
+      const gg = (a, b) => (b ? gg(b, a % b) : Math.abs(a));
+      const g = gg(eq.n, eq.d3) || 1, rn = eq.n / g, rd = eq.d3 / g;
+      return `${termStr(eq.p, eq.d1)} ${op} ${termStr(eq.q, eq.d2)} = ${rd === 1 ? rn : `${rn}/${rd}`}`;
     }
 
     const eqA = tryMake(false);
@@ -28400,7 +28436,7 @@ const TYPE_26_2c = {
       parts: [
         { label: "a", marks: 4, prompt: `Solve the equation: ${eqText(eqA)}`, answerType: "number", correct: String(eqA.x0) },
         { label: "b", marks: 4, prompt: `Solve the equation: ${eqText(eqB)}`, answerType: "number", correct: String(eqB.x0) },
-        { label: "c", marks: 5, prompt: `Solve the equation: ${eqText(eqC)}`, answerType: "number", correct: String(eqC.x0), exactPrecision: true }
+        { label: "c", marks: 5, prompt: `Solve the equation: ${eqText(eqC)}`, answerType: "number", correct: String(eqC.x0), allowFraction: true }
       ],
       solutionSteps: [
         { math: `Multiplying through by a common multiple of ${eqA.d1}, ${eqA.d2} and ${eqA.d3}, then simplifying, gives x = ${eqA.x0}`, note: "a)", stacked: true },
@@ -28660,13 +28696,14 @@ const TYPE_26_3c = {
       return { n: numCoef / g, d: denCoef / g };
     }
 
+    const pw = (k) => (k === 1 ? '' : `^${k}`); // no "^1"
     function answerStr(q) {
       const { n, d } = coefAnswer(q.numCoef, q.denCoef);
       const powDiff = q.numPow - q.denPow;
       const coefStr = d === 1 ? String(n) : `${n}/${d}`;
       if (powDiff === 0) return coefStr;
-      if (powDiff > 0) return d === 1 ? `${n}${q.br}^${powDiff}` : `[${n}${q.br}^${powDiff}]/${d}`;
-      return d === 1 ? `${n}/${q.br}^${-powDiff}` : `${n}/[${d}${q.br}^${-powDiff}]`;
+      if (powDiff > 0) return d === 1 ? `${n}${q.br}${pw(powDiff)}` : `[${n}${q.br}${pw(powDiff)}]/${d}`;
+      return d === 1 ? `${n}/${q.br}${pw(-powDiff)}` : `${n}/[${d}${q.br}${pw(-powDiff)}]`;
     }
 
     const qA = makeQuestion("numBigger");
@@ -28674,7 +28711,7 @@ const TYPE_26_3c = {
     const qC = makeQuestion("equal");
 
     function promptFor(q) {
-      return `${q.numCoef}${q.br}^${q.numPow} / [${q.denCoef}${q.br}^${q.denPow}]`;
+      return `${q.numCoef}${q.br}${pw(q.numPow)} / [${q.denCoef}${q.br}${pw(q.denPow)}]`;
     }
 
     const isNumericC = qC.numPow === qC.denPow;
@@ -28955,6 +28992,11 @@ const TYPE_26_5a = {
     const qa = makeForm1();
     const qb = makeForm2();
     const qc = makeForm3();
+    // part b's answer as a number in its simplest form
+    const g26 = (m, n) => (n ? g26(n, m % n) : Math.abs(m));
+    const bS = Math.sign(qb.A - qb.C), bN = (qb.D - qb.B) * bS, bD = Math.abs(qb.A - qb.C), bG = g26(Math.abs(bN), bD) || 1;
+    const bAns = bD / bG === 1 ? String(bN / bG) : `${bN / bG}/${bD / bG}`;
+    const cK = `${qc.inner === 1 ? '' : qc.inner}${qc.letter}`;
 
     return {
       boards,
@@ -28967,18 +29009,18 @@ const TYPE_26_5a = {
         {
           label: "b", marks: 3,
           prompt: `Make x the subject of the equation: ${qb.A === 1 ? "x" : qb.A + "x"} + ${qb.B} = ${qb.C === 1 ? "x" : qb.C + "x"} + ${qb.D}`,
-          answerType: "text", correct: `x=(${qb.D}-${qb.B})/(${qb.A}-${qb.C})`
+          answerType: "text", correct: bAns, allowDecimal: true
         },
         {
           label: "c", marks: 4,
           prompt: `Make x the subject of the equation: ${qc.A === 1 ? "x" : qc.A + "x"} = ${qc.letter}(${qc.inner} + x)`,
-          answerType: "text", correct: `x=${qc.inner}${qc.letter}/(${qc.A}-${qc.letter})`
+          answerType: "text", correct: `x=${cK}/(${qc.A}-${qc.letter})`
         }
       ],
       solutionSteps: [
         { math: `${qa.A === 1 ? "x" : qa.A + "x"} + ${qa.B} = y − ${qa.letter}x, so ${qa.A === 1 ? "x" : qa.A + "x"} + ${qa.letter}x = y − ${qa.B}, x(${qa.A}+${qa.letter}) = y−${qa.B}, x = (y−${qa.B})/(${qa.A}+${qa.letter})`, note: "a)", stacked: true },
-        { math: `${qb.A === 1 ? "x" : qb.A + "x"} + ${qb.B} = ${qb.C === 1 ? "x" : qb.C + "x"} + ${qb.D}, so ${qb.A}x − ${qb.C}x = ${qb.D} − ${qb.B}, x(${qb.A}−${qb.C}) = ${qb.D}−${qb.B}, x = (${qb.D}−${qb.B})/(${qb.A}−${qb.C})`, note: "b)", stacked: true },
-        { math: `${qc.A === 1 ? "x" : qc.A + "x"} = ${qc.inner}${qc.letter} + ${qc.letter}x, so ${qc.A === 1 ? "x" : qc.A + "x"} − ${qc.letter}x = ${qc.inner}${qc.letter}, x(${qc.A}−${qc.letter}) = ${qc.inner}${qc.letter}, x = ${qc.inner}${qc.letter}/(${qc.A}−${qc.letter})`, note: "c)", stacked: true }
+        { math: `${qb.A === 1 ? "x" : qb.A + "x"} + ${qb.B} = ${qb.C === 1 ? "x" : qb.C + "x"} + ${qb.D}, so ${qb.A}x − ${qb.C}x = ${qb.D} − ${qb.B}, x(${qb.A}−${qb.C}) = ${qb.D}−${qb.B}, x = (${qb.D}−${qb.B})/(${qb.A}−${qb.C}) = ${bAns}`, note: "b)", stacked: true },
+        { math: `${qc.A === 1 ? "x" : qc.A + "x"} = ${cK} + ${qc.letter}x, so ${qc.A === 1 ? "x" : qc.A + "x"} − ${qc.letter}x = ${cK}, x(${qc.A}−${qc.letter}) = ${cK}, x = ${cK}/(${qc.A}−${qc.letter})`, note: "c)", stacked: true }
       ]
     };
   }
@@ -29047,6 +29089,7 @@ const TYPE_26_5b = {
     }
 
     const qa = makeFormA(), qb = makeFormB(), qc = makeFormC();
+    const lt = (k, L) => (k === 1 ? '' : k) + L; // no "1p"
 
     return {
       boards,
@@ -29054,12 +29097,12 @@ const TYPE_26_5b = {
         {
           label: "a", marks: 4,
           prompt: `Make x the subject of the equation: ${qa.letter} = (x + ${qa.A}) / (x + ${qa.B})`,
-          answerType: "text", correct: `x=(${qa.A}-${qa.B}${qa.letter})/(${qa.letter}-1)`
+          answerType: "text", correct: `x=(${qa.A}-${lt(qa.B, qa.letter)})/(${qa.letter}-1)`
         },
         {
           label: "b", marks: 4,
           prompt: `Make x the subject of the equation: (x + ${qb.A}) / (x + ${qb.B}) = ${qb.letter}`,
-          answerType: "text", correct: `x=(${qb.B}${qb.letter}-${qb.A})/(1-${qb.letter})`
+          answerType: "text", correct: `x=(${lt(qb.B, qb.letter)}-${qb.A})/(1-${qb.letter})`
         },
         {
           label: "c", marks: 5,
@@ -29068,8 +29111,8 @@ const TYPE_26_5b = {
         }
       ],
       solutionSteps: [
-        { math: `${qa.letter} = (x+${qa.A})/(x+${qa.B}), so ${qa.letter}(x+${qa.B}) = x+${qa.A}, ${qa.letter}x+${qa.B}${qa.letter} = x+${qa.A}, ${qa.letter}x−x = ${qa.A}−${qa.B}${qa.letter}, x(${qa.letter}−1) = ${qa.A}−${qa.B}${qa.letter}, x = (${qa.A}−${qa.B}${qa.letter})/(${qa.letter}−1)`, note: "a)", stacked: true },
-        { math: `(x+${qb.A})/(x+${qb.B}) = ${qb.letter}, so x+${qb.A} = ${qb.letter}(x+${qb.B}), x+${qb.A} = ${qb.letter}x+${qb.B}${qb.letter}, x−${qb.letter}x = ${qb.B}${qb.letter}−${qb.A}, x(1−${qb.letter}) = ${qb.B}${qb.letter}−${qb.A}, x = (${qb.B}${qb.letter}−${qb.A})/(1−${qb.letter})`, note: "b)", stacked: true },
+        { math: `${qa.letter} = (x+${qa.A})/(x+${qa.B}), so ${qa.letter}(x+${qa.B}) = x+${qa.A}, ${qa.letter}x+${lt(qa.B, qa.letter)} = x+${qa.A}, ${qa.letter}x−x = ${qa.A}−${lt(qa.B, qa.letter)}, x(${qa.letter}−1) = ${qa.A}−${lt(qa.B, qa.letter)}, x = (${qa.A}−${lt(qa.B, qa.letter)})/(${qa.letter}−1)`, note: "a)", stacked: true },
+        { math: `(x+${qb.A})/(x+${qb.B}) = ${qb.letter}, so x+${qb.A} = ${qb.letter}(x+${qb.B}), x+${qb.A} = ${qb.letter}x+${lt(qb.B, qb.letter)}, x−${qb.letter}x = ${lt(qb.B, qb.letter)}−${qb.A}, x(1−${qb.letter}) = ${lt(qb.B, qb.letter)}−${qb.A}, x = (${lt(qb.B, qb.letter)}−${qb.A})/(1−${qb.letter})`, note: "b)", stacked: true },
         { math: `${qc.A}x+${qc.letterB} = x/${qc.letterC}, so ${qc.letterC}(${qc.A}x+${qc.letterB}) = x, ${qc.A}${qc.letterC}x+${qc.letterB}${qc.letterC} = x, ${qc.A}${qc.letterC}x−x = −${qc.letterB}${qc.letterC}, x(${qc.A}${qc.letterC}−1) = −${qc.letterB}${qc.letterC}, x = −${qc.letterB}${qc.letterC}/(${qc.A}${qc.letterC}−1)`, note: "c)", stacked: true }
       ]
     };
@@ -29572,7 +29615,7 @@ const TYPE_27_3b = {
     const promptFormA = c >= 0 ? `1/(x − ${c})` : `1/(x + ${Math.abs(c)})`;
 
     const c2 = nz(1, 9);
-    const d = randInt(-6, 9);
+    const d = nz(-6, 9);
     const invB = `${d}${c2 >= 0 ? '-' : '+'}${Math.abs(c2)}/x`;
     const invBDisplay = `${d} ${c2 >= 0 ? '−' : '+'} ${Math.abs(c2)}/x`;
 
@@ -29865,9 +29908,10 @@ const TYPE_27_4b = {
 
     const a2 = nzCoef(-5, 5), b2 = randInt(-9, 9);
 
-    function fnStr(a, b) { return `${a}x ${b >= 0 ? '+' : '−'} ${Math.abs(b)}`; }
-    function axb(coef, cst) { return `${coef}x${cst >= 0 ? '+' : '-'}${Math.abs(cst)}`; }
-    function ax2b(coef, cst) { return `${coef}x^2${cst >= 0 ? '+' : '-'}${Math.abs(cst)}`; }
+    function fnStr(a, b) { return b === 0 ? `${a}x` : `${a}x ${b > 0 ? '+' : '−'} ${Math.abs(b)}`; }
+    function axb(coef, cst) { return cst === 0 ? `${coef}x` : `${coef}x${cst > 0 ? '+' : '-'}${Math.abs(cst)}`; }
+    function ax2b(coef, cst) { return cst === 0 ? `${coef}x^2` : `${coef}x^2${cst > 0 ? '+' : '-'}${Math.abs(cst)}`; }
+    function show(coef, cst, sq) { return `${coef}x${sq ? '²' : ''}${cst === 0 ? '' : ` ${cst > 0 ? '+' : '−'} ${Math.abs(cst)}`}`; }
 
     return {
       boards,
@@ -29877,9 +29921,9 @@ const TYPE_27_4b = {
         { label: "c", marks: 3, prompt: `The functions p and q are defined as p(x) = ${fnStr(a2, b2)} and q(x) = x². Express pq(x) in the form ax² + b.`, answerType: "text", correct: ax2b(a2, b2) }
       ],
       solutionSteps: [
-        { math: `fg(x) = f(${fnStr(c, d)}) = ${a}(${fnStr(c, d)}) ${b >= 0 ? '+' : '−'} ${Math.abs(b)} = ${axb(fgCoef, fgConst).replace('x', 'x ').replace(/([+-])/, ' $1 ')}`, note: "a)", stacked: true },
-        { math: `gf(x) = g(${fnStr(a, b)}) = ${c}(${fnStr(a, b)}) ${d >= 0 ? '+' : '−'} ${Math.abs(d)} = ${axb(gfCoef, gfConst).replace('x', 'x ').replace(/([+-])/, ' $1 ')}`, note: "b)", stacked: true },
-        { math: `pq(x) = p(x²) = ${ax2b(a2, b2).replace('x^2', 'x² ').replace(/([+-])(?=\\d+$)/, ' $1 ')}`, note: "c)", stacked: true }
+        { math: `fg(x) = f(${fnStr(c, d)}) = ${a}(${fnStr(c, d)}) ${b >= 0 ? '+' : '−'} ${Math.abs(b)} = ${show(fgCoef, fgConst)}`, note: "a)", stacked: true },
+        { math: `gf(x) = g(${fnStr(a, b)}) = ${c}(${fnStr(a, b)}) ${d >= 0 ? '+' : '−'} ${Math.abs(d)} = ${show(gfCoef, gfConst)}`, note: "b)", stacked: true },
+        { math: `pq(x) = p(x²) = ${show(a2, b2, true)}`, note: "c)", stacked: true }
       ]
     };
   }
@@ -30029,7 +30073,7 @@ const TYPE_28_1a = {
       if (value === 0) return '0';
       const magnitude = Math.floor(Math.log10(Math.abs(value)));
       const factor = Math.pow(10, sf - 1 - magnitude);
-      const rounded = Math.round(value * factor) / factor;
+      const rounded = Math.sign(value) * Math.round(Math.abs(value) * factor * (1 + 1e-12)) / factor;
       const newMag = rounded === 0 ? magnitude : Math.floor(Math.log10(Math.abs(rounded)));
       const dp = sf - 1 - newMag;
       return dp > 0 ? rounded.toFixed(dp) : String(rounded);
@@ -30353,7 +30397,7 @@ const TYPE_28_3a = {
       if (value === 0) return '0';
       const magnitude = Math.floor(Math.log10(Math.abs(value)));
       const factor = Math.pow(10, sf - 1 - magnitude);
-      const rounded = Math.round(value * factor) / factor;
+      const rounded = Math.sign(value) * Math.round(Math.abs(value) * factor * (1 + 1e-12)) / factor;
       const newMag = rounded === 0 ? magnitude : Math.floor(Math.log10(Math.abs(rounded)));
       const dp = sf - 1 - newMag;
       return dp > 0 ? rounded.toFixed(dp) : String(rounded);
@@ -30458,7 +30502,7 @@ const TYPE_28_3b = {
     let sideP, sideQ, sideR, valid = false, tries = 0;
     while (!valid && tries < 60) {
       sideP = randDec(4, 15, 1); sideQ = randDec(4, 15, 1); sideR = randDec(4, 15, 1);
-      valid = (sideP + sideQ > sideR) && (sideP + sideR > sideQ) && (sideQ + sideR > sideP);
+      valid = (sideP + sideQ > sideR + 0.5) && (sideP + sideR > sideQ + 0.5) && (sideQ + sideR > sideP + 0.5);
       tries++;
     }
     // find angle at the vertex between sideP and sideQ (i.e. opposite sideR)
@@ -30541,7 +30585,7 @@ const TYPE_28_4a = {
       if (value === 0) return '0';
       const magnitude = Math.floor(Math.log10(Math.abs(value)));
       const factor = Math.pow(10, sf - 1 - magnitude);
-      const rounded = Math.round(value * factor) / factor;
+      const rounded = Math.sign(value) * Math.round(Math.abs(value) * factor * (1 + 1e-12)) / factor;
       const newMag = rounded === 0 ? magnitude : Math.floor(Math.log10(Math.abs(rounded)));
       const dp = sf - 1 - newMag;
       return dp > 0 ? rounded.toFixed(dp) : String(rounded);
@@ -30626,7 +30670,7 @@ const TYPE_28_4b = {
       if (value === 0) return '0';
       const magnitude = Math.floor(Math.log10(Math.abs(value)));
       const factor = Math.pow(10, sf - 1 - magnitude);
-      const rounded = Math.round(value * factor) / factor;
+      const rounded = Math.sign(value) * Math.round(Math.abs(value) * factor * (1 + 1e-12)) / factor;
       const newMag = rounded === 0 ? magnitude : Math.floor(Math.log10(Math.abs(rounded)));
       const dp = sf - 1 - newMag;
       return dp > 0 ? rounded.toFixed(dp) : String(rounded);
@@ -30713,7 +30757,7 @@ const TYPE_28_4c = {
       if (value === 0) return '0';
       const magnitude = Math.floor(Math.log10(Math.abs(value)));
       const factor = Math.pow(10, sf - 1 - magnitude);
-      const rounded = Math.round(value * factor) / factor;
+      const rounded = Math.sign(value) * Math.round(Math.abs(value) * factor * (1 + 1e-12)) / factor;
       const newMag = rounded === 0 ? magnitude : Math.floor(Math.log10(Math.abs(rounded)));
       const dp = sf - 1 - newMag;
       return dp > 0 ? rounded.toFixed(dp) : String(rounded);
@@ -30797,7 +30841,7 @@ const TYPE_28_5a = {
       if (value === 0) return '0';
       const magnitude = Math.floor(Math.log10(Math.abs(value)));
       const factor = Math.pow(10, sf - 1 - magnitude);
-      const rounded = Math.round(value * factor) / factor;
+      const rounded = Math.sign(value) * Math.round(Math.abs(value) * factor * (1 + 1e-12)) / factor;
       const newMag = rounded === 0 ? magnitude : Math.floor(Math.log10(Math.abs(rounded)));
       const dp = sf - 1 - newMag;
       return dp > 0 ? rounded.toFixed(dp) : String(rounded);
@@ -30891,7 +30935,7 @@ const TYPE_28_5b = {
       if (value === 0) return '0';
       const magnitude = Math.floor(Math.log10(Math.abs(value)));
       const factor = Math.pow(10, sf - 1 - magnitude);
-      const rounded = Math.round(value * factor) / factor;
+      const rounded = Math.sign(value) * Math.round(Math.abs(value) * factor * (1 + 1e-12)) / factor;
       const newMag = rounded === 0 ? magnitude : Math.floor(Math.log10(Math.abs(rounded)));
       const dp = sf - 1 - newMag;
       return dp > 0 ? rounded.toFixed(dp) : String(rounded);
@@ -30988,7 +31032,7 @@ const TYPE_28_5c = {
       if (value === 0) return '0';
       const magnitude = Math.floor(Math.log10(Math.abs(value)));
       const factor = Math.pow(10, sf - 1 - magnitude);
-      const rounded = Math.round(value * factor) / factor;
+      const rounded = Math.sign(value) * Math.round(Math.abs(value) * factor * (1 + 1e-12)) / factor;
       const newMag = rounded === 0 ? magnitude : Math.floor(Math.log10(Math.abs(rounded)));
       const dp = sf - 1 - newMag;
       return dp > 0 ? rounded.toFixed(dp) : String(rounded);
@@ -31057,10 +31101,10 @@ const TYPE_28_6a = {
   exampleTest: {
     boards: ["WJEC", "Edexcel", "AQA", "IGCSE"],
     parts: [
-      { label: "a", marks: 2, prompt: "Which method would you use to find x?<br>" + triConstructDiagram({ points: [[0, 0], [7, 0], [0, 24]], sideLabels: [{ text: "x", i: 1, j: 2, color: "#c0392b" }, { text: "7 cm", i: 0, j: 1 }, { text: "24 cm", i: 0, j: 2 }], angleMark: { at: 0, rightAngle: true }, notToScale: true }), answerType: "text", correct: "Pythagoras" },
-      { label: "b", marks: 2, prompt: "Which method would you use to find x?<br>" + rightTriangleDiagram({ theta: 52, adj: 6, unknownSide: 'opp', unknownLabel: 'x' }), answerType: "text", correct: "Trigonometry" },
-      { label: "c", marks: 2, prompt: "Which method would you use to find x?<br>" + (function () { const third = asaThirdVertex(14, 40, 75); return triConstructDiagram({ points: [[0, 0], [14, 0], third], labels: [{ text: "40°", pt: [0, 0], dy: 22, dx: 8 }, { text: "75°", pt: [14, 0], dy: 22, dx: -8 }], sideLabels: [{ text: "14 cm", i: 0, j: 1 }, { text: "x", i: 1, j: 2, color: "#c0392b" }], notToScale: true }); })(), answerType: "text", correct: "Sine Rule" },
-      { label: "d", marks: 2, prompt: "Which method would you use to find x?<br>" + (function () { const C = [9 * Math.cos(100 * Math.PI / 180), 9 * Math.sin(100 * Math.PI / 180)]; return triConstructDiagram({ points: [[0, 0], [13, 0], C], angleMark: { at: 0, label: "100°" }, sideLabels: [{ text: "13 cm", i: 0, j: 1 }, { text: "9 cm", i: 0, j: 2 }, { text: "x", i: 1, j: 2, color: "#c0392b" }], notToScale: true }); })(), answerType: "text", correct: "Cosine Rule" }
+      { label: "a", marks: 2, prompt: "Which method would you use to find x? Answer Pythagoras, Trigonometry, Sine Rule or Cosine Rule.<br>" + triConstructDiagram({ points: [[0, 0], [7, 0], [0, 24]], sideLabels: [{ text: "x", i: 1, j: 2, color: "#c0392b" }, { text: "7 cm", i: 0, j: 1 }, { text: "24 cm", i: 0, j: 2 }], angleMark: { at: 0, rightAngle: true }, notToScale: true }), answerType: "text", correct: "Pythagoras" },
+      { label: "b", marks: 2, prompt: "Which method would you use to find x? Answer Pythagoras, Trigonometry, Sine Rule or Cosine Rule.<br>" + rightTriangleDiagram({ theta: 52, adj: 6, unknownSide: 'opp', unknownLabel: 'x' }), answerType: "text", correct: "Trigonometry" },
+      { label: "c", marks: 2, prompt: "Which method would you use to find x? Answer Pythagoras, Trigonometry, Sine Rule or Cosine Rule.<br>" + (function () { const third = asaThirdVertex(14, 40, 75); return triConstructDiagram({ points: [[0, 0], [14, 0], third], labels: [{ text: "40°", pt: [0, 0], dy: 22, dx: 8 }, { text: "75°", pt: [14, 0], dy: 22, dx: -8 }], sideLabels: [{ text: "14 cm", i: 0, j: 1 }, { text: "x", i: 1, j: 2, color: "#c0392b" }], notToScale: true }); })(), answerType: "text", correct: "Sine Rule" },
+      { label: "d", marks: 2, prompt: "Which method would you use to find x? Answer Pythagoras, Trigonometry, Sine Rule or Cosine Rule.<br>" + (function () { const C = [9 * Math.cos(100 * Math.PI / 180), 9 * Math.sin(100 * Math.PI / 180)]; return triConstructDiagram({ points: [[0, 0], [13, 0], C], angleMark: { at: 0, label: "100°" }, sideLabels: [{ text: "13 cm", i: 0, j: 1 }, { text: "9 cm", i: 0, j: 2 }, { text: "x", i: 1, j: 2, color: "#c0392b" }], notToScale: true }); })(), answerType: "text", correct: "Cosine Rule" }
     ],
     solutionSteps: [
       { math: "Right angle, two sides, no angle involved — Pythagoras.", note: "a)" },
@@ -31124,7 +31168,7 @@ const TYPE_28_6a = {
     }
     return {
       boards,
-      parts: [{ label: "a", marks: 2, prompt: `Which method would you use to find x?<br>${diagram}`, answerType: "text", correct }],
+      parts: [{ label: "a", marks: 2, prompt: `Which method would you use to find x? Answer Pythagoras, Trigonometry, Sine Rule or Cosine Rule.<br>${diagram}`, answerType: "text", correct }],
       solutionSteps: [{ math: explain, note: "" }]
     };
   }
@@ -31322,9 +31366,9 @@ const TYPE_29_2a = {
     parts: [
       { label: "a", marks: 2, prompt: "The graph shows the function y = x² − 3. Use the graph to find the value of y when x = 1.5.<br>" + parabolaGraphSVG({
           xMin: -3, xMax: 3, yMin: -5, yMax: 10, fn: x => x * x - 3, xStep: 1, yStep: 5
-        }), answerType: "number", correct: "-0.75", exactPrecision: true },
-      { label: "b", marks: 3, prompt: "Using the same graph, find the values of x when y = 5. Give both values, separated by a comma.", answerType: "text", correct: "-2.8,2.8" },
-      { label: "c", marks: 2, prompt: "Using the same graph, give the coordinates of the turning point of the curve.", answerType: "text", correct: "(0,-3)" }
+        }), answerType: "number", correct: "-0.75", tolerance: 0.3 },
+      { label: "b", marks: 3, prompt: "Using the same graph, find the values of x when y = 5. Give both values, separated by a comma.", answerType: "text", correct: "-2.8,2.8", tolerance: 0.2 },
+      { label: "c", marks: 2, prompt: "Using the same graph, give the coordinates of the turning point of the curve.", answerType: "text", correct: "(0,-3)", tolerance: 0.2 }
     ],
     solutionSteps: [
       { math: "y = 1.5² − 3 = 2.25 − 3 = −0.75", note: "a)", stacked: true },
@@ -31376,9 +31420,9 @@ const TYPE_29_2a = {
     return {
       boards,
       parts: [
-        { label: "a", marks: 2, prompt: `The graph shows the function y = ${fStr}. Use the graph to find the value of y when x = ${xRead}.<br>` + diagram, answerType: "number", correct: fmt1(yRead), exactPrecision: true },
-        { label: "b", marks: 3, prompt: `Using the same graph, find the values of x when y = ${k}. Give both values, separated by a comma.`, answerType: "text", correct: `${xLo},${xHi}` },
-        { label: "c", marks: 2, prompt: "Using the same graph, give the coordinates of the turning point of the curve.", answerType: "text", correct: `(${fmt1(vx)},${fmt1(vy)})` }
+        { label: "a", marks: 2, prompt: `The graph shows the function y = ${fStr}. Use the graph to find the value of y when x = ${xRead}.<br>` + diagram, answerType: "number", correct: fmt1(yRead), tolerance: 0.3 },
+        { label: "b", marks: 3, prompt: `Using the same graph, find the values of x when y = ${k}. Give both values, separated by a comma.`, answerType: "text", correct: `${xLo},${xHi}`, tolerance: 0.2 },
+        { label: "c", marks: 2, prompt: "Using the same graph, give the coordinates of the turning point of the curve.", answerType: "text", correct: `(${fmt1(vx)},${fmt1(vy)})`, tolerance: 0.2 }
       ],
       solutionSteps: [
         { math: `y = ${a}(${xRead})² ${b >= 0 ? '+' : '−'} ${Math.abs(b)}(${xRead}) ${c >= 0 ? '+' : '−'} ${Math.abs(c)} = ${fmt1(yRead)}`, note: "a)", stacked: true },
@@ -31418,8 +31462,8 @@ const TYPE_29_2b = {
     parts: [
       { label: "a", marks: 4, prompt: "The graph shows the function y = x³ − 4x. Use the graph to find all the solutions to the equation x³ − 4x = 0. Give all values, separated by commas.<br>" + parabolaGraphSVG({
           xMin: -3, xMax: 3, yMin: -15, yMax: 15, fn: x => x * x * x - 4 * x, xStep: 1, yStep: 5, markRoots: [-2, 0, 2]
-        }), answerType: "text", correct: "-2,0,2" },
-      { label: "b", marks: 3, prompt: "Using the same graph, solve the equation x³ − 4x = 5.", answerType: "number", correct: "2.5", exactPrecision: true }
+        }), answerType: "text", correct: "-2,0,2", tolerance: 0.2 },
+      { label: "b", marks: 3, prompt: "Using the same graph, solve the equation x³ − 4x = 5.", answerType: "number", correct: "2.5", tolerance: 0.2 }
     ],
     solutionSteps: [
       { math: "x³ − 4x = 0 factorises as x(x² − 4) = x(x−2)(x+2) = 0, giving x = −2, 0, or 2", note: "a)", stacked: true },
@@ -31474,6 +31518,7 @@ const TYPE_29_2b = {
       rootsK = findRoots(fn, xMin, xMax, k);
       tries++;
     } while (rootsK.length !== 1 && tries < 40);
+    if (rootsK.length !== 1) { k = Math.round(fn(4.9 * a)); rootsK = findRoots(fn, xMin, xMax, k); }
     if (rootsK.length === 0) { k = 0; rootsK = roots0raw.length ? [roots0raw[0]] : [0]; }
     const xSolve = fmt1(rootsK[0]);
 
@@ -31492,8 +31537,8 @@ const TYPE_29_2b = {
     return {
       boards,
       parts: [
-        { label: "a", marks: 4, prompt: `The graph shows the function y = ${fStr}. Use the graph to find all the solutions to the equation ${fStr} = 0. Give all values, separated by commas.<br>` + diagram, answerType: "text", correct: roots0.join(',') },
-        { label: "b", marks: 3, prompt: `Using the same graph, solve the equation ${fStr} = ${k}.`, answerType: "number", correct: xSolve, exactPrecision: true }
+        { label: "a", marks: 4, prompt: `The graph shows the function y = ${fStr}. Use the graph to find all the solutions to the equation ${fStr} = 0. Give all values, separated by commas.<br>` + diagram, answerType: "text", correct: roots0.join(','), tolerance: 0.2 },
+        { label: "b", marks: 3, prompt: `Using the same graph, solve the equation ${fStr} = ${k}.`, answerType: "number", correct: xSolve, tolerance: 0.2 }
       ],
       solutionSteps: [
         { math: `${fStr} = 0 has solutions x = ${roots0.join(', ')}`, note: "a)", stacked: true },
@@ -31528,11 +31573,11 @@ const TYPE_29_2c = {
     parts: [
       { label: "a", marks: 2, prompt: "The graph shows part of y = " + frac('8', 'x', true) + ". Use the graph to find the value of y when x = 5.<br>" + parabolaGraphSVG({
           xMin: -1, xMax: 6, yMin: 0, yMax: 10, fn: x => 8 / x, xStep: 1, yStep: 1
-        }), answerType: "number", correct: "1.6", exactPrecision: true },
-      { label: "b", marks: 2, prompt: "Using the same graph, use it to solve the equation " + frac('8', 'x', true) + " = 2.5.", answerType: "number", correct: "3.2", exactPrecision: true },
+        }), answerType: "number", correct: "1.6", tolerance: 0.3 },
+      { label: "b", marks: 2, prompt: "Using the same graph, use it to solve the equation " + frac('8', 'x', true) + " = 2.5.", answerType: "number", correct: "3.2", tolerance: 0.2 },
       { label: "c", marks: 2, prompt: "The graph shows part of y = 3ˣ. Use the graph to solve the equation 3ˣ = 20.<br>" + parabolaGraphSVG({
           xMin: -1, xMax: 4, yMin: 0, yMax: 25, fn: x => Math.pow(3, x), xStep: 1, yStep: 5
-        }), answerType: "number", correct: "2.7", exactPrecision: true }
+        }), answerType: "number", correct: "2.7", tolerance: 0.2 }
     ],
     solutionSteps: [
       { math: "y = 8 ÷ 5 = 1.6", note: "a)", stacked: true },
@@ -31572,9 +31617,9 @@ const TYPE_29_2c = {
     return {
       boards,
       parts: [
-        { label: "a", marks: 2, prompt: `The graph shows part of y = ${k}/x. Use the graph to find the value of y when x = ${xRead}.<br>` + diagramRecip, answerType: "number", correct: fmt1(yRead), exactPrecision: true },
-        { label: "b", marks: 2, prompt: `Using the same graph, use it to solve the equation ${k}/x = ${target}.`, answerType: "number", correct: fmt1(xSolve), exactPrecision: true },
-        { label: "c", marks: 3, prompt: `The graph shows part of y = ${base}ˣ. Use the graph to solve the equation ${base}ˣ = ${target2}.<br>` + diagramExp, answerType: "number", correct: fmt1(xSolve2), exactPrecision: true }
+        { label: "a", marks: 2, prompt: `The graph shows part of y = ${k}/x. Use the graph to find the value of y when x = ${xRead}.<br>` + diagramRecip, answerType: "number", correct: fmt1(yRead), tolerance: 0.3 },
+        { label: "b", marks: 2, prompt: `Using the same graph, use it to solve the equation ${k}/x = ${target}.`, answerType: "number", correct: fmt1(xSolve), tolerance: 0.2 },
+        { label: "c", marks: 3, prompt: `The graph shows part of y = ${base}ˣ. Use the graph to solve the equation ${base}ˣ = ${target2}.<br>` + diagramExp, answerType: "number", correct: fmt1(xSolve2), tolerance: 0.2 }
       ],
       solutionSteps: [
         { math: `y = ${k} ÷ ${xRead} = ${fmt1(yRead)}`, note: "a)", stacked: true },
@@ -32079,15 +32124,16 @@ const TYPE_29_3e = {
     const period3 = 180 / B3.val;
 
     const fnName1 = "sin", fnName2 = "cos";
-    const rangeStr1 = `-${fmtClean(Math.abs(amp1.val))}≤y≤${fmtClean(Math.abs(amp1.val))}`;
-    const rangeStr2 = `-${fmtClean(Math.abs(amp2.val))}≤y≤${fmtClean(Math.abs(amp2.val))}`;
+    const kOf = (amp) => { const k = Math.abs(amp.val); return Math.abs(k * 10000 - Math.round(k * 10000)) < 1e-6 ? fmtClean(k) : String(amp.plain).replace(/^-/, ''); };
+    const rangeStr1 = `-${kOf(amp1)}≤y≤${kOf(amp1)}`;
+    const rangeStr2 = `-${kOf(amp2)}≤y≤${kOf(amp2)}`;
 
     return {
       boards,
       parts: [
-        { label: "a", marks: 2, prompt: `State the range of y = ${amp1.display}${fnName1}(${B1.disp}x). Give your answer in the form −k ≤ y ≤ k, as a decimal.<br>(Here A = ${amp1.plain} and B = ${B1.plain}.)`, answerType: "text", correct: rangeStr1 },
+        { label: "a", marks: 2, prompt: `State the range of y = ${amp1.display}${fnName1}(${B1.disp}x). Give your answer in the form −k ≤ y ≤ k.<br>(Here A = ${amp1.plain} and B = ${B1.plain}.)`, answerType: "text", correct: rangeStr1 },
         { label: "b", marks: 2, prompt: `State the period of y = ${amp1.display}${fnName1}(${B1.disp}x), in degrees.`, answerType: "number", correct: fmtClean(period1) },
-        { label: "c", marks: 2, prompt: `State the range of y = ${amp2.display}${fnName2}(${B2.disp}x). Give your answer in the form −k ≤ y ≤ k, as a decimal.<br>(Here A = ${amp2.plain} and B = ${B2.plain}.)`, answerType: "text", correct: rangeStr2 },
+        { label: "c", marks: 2, prompt: `State the range of y = ${amp2.display}${fnName2}(${B2.disp}x). Give your answer in the form −k ≤ y ≤ k.<br>(Here A = ${amp2.plain} and B = ${B2.plain}.)`, answerType: "text", correct: rangeStr2 },
         { label: "d", marks: 2, prompt: `State the period of y = ${amp2.display}${fnName2}(${B2.disp}x), in degrees.`, answerType: "number", correct: fmtClean(period2) },
         { label: "e", marks: 2, prompt: `State the period of y = ${amp3.display}tan(${B3.disp}x), in degrees.<br>(Here A = ${amp3.plain} and B = ${B3.plain}.)`, answerType: "number", correct: fmtClean(period3) }
       ],
@@ -32137,13 +32183,13 @@ const TYPE_29_3f = {
     parts: [
       { label: "a", marks: 2, prompt: "For the graph y = 3sin(2x − 40°), state the phase shift and say whether it is left or right. Give your answer as a number followed by 'right' or 'left', e.g. '15 right'.", answerType: "text", correct: "20 right" },
       { label: "b", marks: 3, prompt: "Using the same graph, state the coordinates of the first maximum point for x ≥ 0°. Give your answer as (x, y), with x in degrees.", answerType: "text", correct: "(65,3)" },
-      { label: "c", marks: 2, prompt: "For the graph y = 4cos(3x + 30°) — note this is the same as 4cos(3x − (−30°)) — state the phase shift and say whether it is left or right. Give your answer as a number followed by 'right' or 'left', e.g. '15 right'.", answerType: "text", correct: "-10 left" },
+      { label: "c", marks: 2, prompt: "For the graph y = 4cos(3x + 30°) — note this is the same as 4cos(3x − (−30°)) — state the phase shift and say whether it is left or right. Give your answer as a number followed by 'right' or 'left', e.g. '15 right'.", answerType: "text", correct: "10 left" },
       { label: "d", marks: 3, prompt: "Using the same graph, state the coordinates of the first maximum point for x ≥ 0°. Give your answer as (x, y), with x in degrees.", answerType: "text", correct: "(110,4)" }
     ],
     solutionSteps: [
       { math: "B = 2, C = 40. Phase shift = 40° ÷ 2 = 20°, which is positive so the shift is to the right: 20 right", note: "a)", stacked: true },
       { math: "Maximum where 2x − 40° = 90°, so 2x = 130°, x = 65°. Maximum value = |3| = 3: (65°, 3)", note: "b)", stacked: true },
-      { math: "Rewriting as 4cos(3x − (−30°)): B = 3, C = −30. Phase shift = −30° ÷ 3 = −10°, which is negative so the shift is to the left: -10 left", note: "c)", stacked: true },
+      { math: "Rewriting as 4cos(3x − (−30°)): B = 3, C = −30. Phase shift = −30° ÷ 3 = −10°, which is negative so the shift is to the left: 10 left", note: "c)", stacked: true },
       { math: "Maximum where 3x − (−30°) = 0°, so 3x = −30°, x = −10°. Since this is negative, add one full period (360°÷3 = 120°) to bring it into range: x = −10°+120° = 110°. Maximum value = |4| = 4: (110°, 4)", note: "d)", stacked: true }
     ]
   },
@@ -32188,9 +32234,9 @@ const TYPE_29_3f = {
     return {
       boards,
       parts: [
-        { label: "a", marks: 2, prompt: `For the graph y = ${coefStr(A1)}sin(${B1}x ${C1 >= 0 ? '−' : '+'} ${Math.abs(C1)}°), state the phase shift and say whether it is left or right. Give your answer as a number followed by 'right' or 'left', e.g. '15 right'.<br>` + diagram, answerType: "text", correct: `${fmtClean(shift1)} ${shift1 >= 0 ? 'right' : 'left'}` },
+        { label: "a", marks: 2, prompt: `For the graph y = ${coefStr(A1)}sin(${B1}x ${C1 >= 0 ? '−' : '+'} ${Math.abs(C1)}°), state the phase shift and say whether it is left or right. Give your answer as a number followed by 'right' or 'left', e.g. '15 right'.<br>` + diagram, answerType: "text", correct: `${fmtClean(Math.abs(shift1))} ${shift1 >= 0 ? 'right' : 'left'}` },
         { label: "b", marks: 3, prompt: `Using the same graph, state the coordinates of the first maximum point for x ≥ 0°. Give your answer as (x, y), with x in degrees.`, answerType: "text", correct: `(${fmtClean(xMax1)},${fmtClean(yMax1)})` },
-        { label: "c", marks: 2, prompt: `For the graph y = ${coefStr(A2)}cos(${B2}x ${C2 >= 0 ? '−' : '+'} ${Math.abs(C2)}°), state the phase shift and say whether it is left or right. Give your answer as a number followed by 'right' or 'left', e.g. '15 right'.`, answerType: "text", correct: `${fmtClean(shift2)} ${shift2 >= 0 ? 'right' : 'left'}` },
+        { label: "c", marks: 2, prompt: `For the graph y = ${coefStr(A2)}cos(${B2}x ${C2 >= 0 ? '−' : '+'} ${Math.abs(C2)}°), state the phase shift and say whether it is left or right. Give your answer as a number followed by 'right' or 'left', e.g. '15 right'.`, answerType: "text", correct: `${fmtClean(Math.abs(shift2))} ${shift2 >= 0 ? 'right' : 'left'}` },
         { label: "d", marks: 3, prompt: `Using the same graph, state the coordinates of the first maximum point for x ≥ 0°. Give your answer as (x, y), with x in degrees.`, answerType: "text", correct: `(${fmtClean(xMax2)},${fmtClean(yMax2)})` }
       ],
       solutionSteps: [
@@ -32385,7 +32431,7 @@ const TYPE_30_1b = {
       if (value === 0) return '0';
       const magnitude = Math.floor(Math.log10(Math.abs(value)));
       const factor = Math.pow(10, sf - 1 - magnitude);
-      const rounded = Math.round(value * factor) / factor;
+      const rounded = Math.sign(value) * Math.round(Math.abs(value) * factor * (1 + 1e-12)) / factor;
       const newMag = rounded === 0 ? magnitude : Math.floor(Math.log10(Math.abs(rounded)));
       const dp = sf - 1 - newMag;
       return dp > 0 ? rounded.toFixed(dp) : String(rounded);
@@ -32852,6 +32898,8 @@ const TYPE_30_4b = {
 
     const acCoef = scale; // AC = scale*p + scale*q
     const k = acCoef / xdCoef; // since xdCoef===dyCoef by construction
+    const gk = (a, b) => (b ? gk(b, a % b) : a), kG = gk(m1 + n1, n1);
+    const kStr = n1 / kG === 1 ? String((m1 + n1) / kG) : `${(m1 + n1) / kG}/${n1 / kG}`;
 
     function fmtVec(coef, letter) {
       if (coef === 1) return letter;
@@ -32874,13 +32922,13 @@ const TYPE_30_4b = {
           ), answerType: "text", correct: fmtVec(xdCoef, 'q') },
         { label: "b", marks: 2, prompt: "Using the same diagram, find DY→ in terms of p and q.", answerType: "text", correct: fmtVec(dyCoef, 'p') },
         { label: "c", marks: 3, prompt: "Using the same diagram, find XY→ in terms of p and q.", answerType: "text", correct: `${fmtVec(dyCoef, "p")}+${fmtVec(xdCoef, "q")}` },
-        { label: "d", marks: 2, prompt: "State the scale factor k for which AC→ = k × XY→.", answerType: "number", correct: fmtClean(k) }
+        { label: "d", marks: 2, prompt: "State the scale factor k for which AC→ = k × XY→.", answerType: "number", correct: kStr, allowDecimal: true }
       ],
       solutionSteps: [
         { math: `AD→=BC→=${scale}q. XD→ = (${n1}/${m1 + n1})×${scale}q = ${fmtVec(xdCoef, 'q')}`, note: "a)", stacked: true },
         { math: `DC→=AB→=${scale}p. DY→ = (${m2}/${m2 + n2})×${scale}p = ${fmtVec(dyCoef, 'p')}`, note: "b)", stacked: true },
         { math: `XY→ = XD→+DY→ = ${fmtVec(dyCoef, "p")}+${fmtVec(xdCoef, "q")}`, note: "c)", stacked: true },
-        { math: `AC→=${scale}p+${scale}q=${scale}(p+q); XY→=${fmtClean(xdCoef)}(p+q). k = ${scale}/${fmtClean(xdCoef)} = ${fmtClean(k)}`, note: "d)", stacked: true }
+        { math: `AC→=${scale}p+${scale}q=${scale}(p+q); XY→=${fmtClean(xdCoef)}(p+q). k = ${scale}/${fmtClean(xdCoef)} = ${kStr}`, note: "d)", stacked: true }
       ]
     };
   }
@@ -32959,12 +33007,17 @@ const TYPE_30_4c = {
       return s === '' ? '0' : s;
     }
 
-    const scale = [4, 6, 8, 9][randInt(0, 3)];
     // M divides CB with CM:MB = m3:n3 (M is a general point on CB, not just the midpoint).
     const m3n3 = [[1, 1], [1, 2], [2, 1], [1, 3], [3, 1]];
     const [m3, n3] = m3n3[randInt(0, m3n3.length - 1)];
     // Derived constraint (independently verified): AP:PC must be (m3+n3):m3
     const m = m3 + n3, n = m3;
+    // A multiple of both ratio totals, so every vector coefficient is whole.
+    const gk = (a, b) => (b ? gk(b, a % b) : a);
+    const lcmT = (m + n) * (m3 + n3) / gk(m + n, m3 + n3);
+    const scale = lcmT * (lcmT <= 6 ? randInt(1, 2) : 1);
+    const kG = gk(m + n, m3 + n3);
+    const kStr = (m3 + n3) / kG === 1 ? String((m + n) / kG) : `${(m + n) / kG}/${(m3 + n3) / kG}`;
 
     // OP = OA + AP = scale*a + (m/(m+n))*(scale*c - scale*a)
     const fracAP = m / (m + n);
@@ -32994,12 +33047,12 @@ const TYPE_30_4c = {
       parts: [
         { label: "a", marks: 3, prompt: `OABC is a parallelogram. OA→ = ${scale}a and OC→ = ${scale}c. P is on AC with AP:PC = ${m}:${n}. Find OP→ in terms of a and c.<br>` + diagram, answerType: "text", correct: formatVecExpr(opCoefA, opCoefC) },
         { label: "b", marks: 3, prompt: `M is the point on CB with CM:MB = ${m3}:${n3}. Find OM→ in terms of a and c.`, answerType: "text", correct: formatVecExpr(omCoefA, omCoefC) },
-        { label: "c", marks: 2, prompt: "State the scale factor k for which OM→ = k × OP→, confirming that O, P, M are collinear.", answerType: "number", correct: fmtClean(k) }
+        { label: "c", marks: 2, prompt: "State the scale factor k for which OM→ = k × OP→, confirming that O, P, M are collinear.", answerType: "number", correct: kStr, allowDecimal: true }
       ],
       solutionSteps: [
         { math: `AC→=${scale}c−${scale}a. AP=(${m}/${m + n})AC. OP→=${scale}a+(${m}/${m + n})(${scale}c−${scale}a) = ${formatVecExpr(opCoefA, opCoefC)}`, note: "a)", stacked: true },
         { math: `OB→=${scale}a+${scale}c. OM→=${scale}c+(${m3}/${m3 + n3})×${scale}a = ${formatVecExpr(omCoefA, omCoefC)}`, note: "b)", stacked: true },
-        { math: `OM→=${formatVecExpr(omCoefA, omCoefC)} = ${fmtClean(k)}×(${formatVecExpr(opCoefA, opCoefC)}) = ${fmtClean(k)}×OP→, so k=${fmtClean(k)}`, note: "c)", stacked: true }
+        { math: `OM→=${formatVecExpr(omCoefA, omCoefC)} = ${kStr}×(${formatVecExpr(opCoefA, opCoefC)}) = ${kStr}×OP→, so k=${kStr}`, note: "c)", stacked: true }
       ]
     };
   }
@@ -33658,14 +33711,14 @@ const TYPE_31_3a = {
   exampleTest: {
     boards: ["WJEC", "Edexcel", "AQA", "IGCSE"],
     parts: [
-      { label: "a", marks: 2, prompt: "In triangle XYZ, W is on YZ with XW bisecting angle X. XY = 6 cm, XZ = 9 cm, YZ = 20 cm. State the ratio YW:WZ in its simplest form. Give your answer as 'p:q'.", answerType: "text", correct: "2:3" },
-      { label: "b", marks: 3, prompt: "Using the same triangle, find the length YW.", answerType: "number", correct: "8" },
-      { label: "c", marks: 3, prompt: "Using the same triangle, find the length WZ.", answerType: "number", correct: "12" }
+      { label: "a", marks: 2, prompt: "In triangle XYZ, W is on YZ with XW bisecting angle X. XY = 6 cm, XZ = 9 cm, YZ = 10 cm. State the ratio YW:WZ in its simplest form. Give your answer as 'p:q'.", answerType: "text", correct: "2:3" },
+      { label: "b", marks: 3, prompt: "Using the same triangle, find the length YW.", answerType: "number", correct: "4" },
+      { label: "c", marks: 3, prompt: "Using the same triangle, find the length WZ.", answerType: "number", correct: "6" }
     ],
     solutionSteps: [
       { math: "YW:WZ = XY:XZ = 6:9 = 2:3", note: "a)", stacked: true },
-      { math: "YW = (2/5)×20 = 8 cm", note: "b)", stacked: true },
-      { math: "WZ = (3/5)×20 = 12 cm", note: "c)", stacked: true }
+      { math: "YW = (2/5)×10 = 4 cm", note: "b)", stacked: true },
+      { math: "WZ = (3/5)×10 = 6 cm", note: "c)", stacked: true }
     ]
   },
 
@@ -33680,10 +33733,12 @@ const TYPE_31_3a = {
     // and YZ as a multiple of (p+q) so YW, WZ come out as clean values.
     const ratios = [[1, 1], [2, 3], [3, 2], [1, 2], [2, 1], [3, 4], [4, 3], [1, 3], [3, 1]];
     const [p, q] = ratios[randInt(0, ratios.length - 1)];
-    const scaleXY = randInt(2, 5);
-    const XY = p * scaleXY, XZ = q * scaleXY;
     const totalParts = p + q;
-    const scaleYZ = randInt(2, 6);
+    // triangle inequality: |XY − XZ| < YZ < XY + XZ
+    let scaleXY, scaleYZ;
+    do { scaleXY = randInt(2, 5); scaleYZ = randInt(2, 6); }
+    while (!(scaleYZ < scaleXY && Math.abs(p - q) * scaleXY < totalParts * scaleYZ));
+    const XY = p * scaleXY, XZ = q * scaleXY;
     const YZ = totalParts * scaleYZ;
     const YW = p * scaleYZ, WZ = q * scaleYZ;
 
@@ -34913,7 +34968,7 @@ const TYPE_32_6b = {
     // s = k*t^2 + p*t (+ q), with p = 2k*m so that the velocity is zero at
     // a clean integer time t = -m. Acceleration is always constant (2k).
     const k = randNZ(-3, 3);
-    const m = randNZ(-6, 6);
+    const m = randInt(1, 6); // velocity is zero at t = m > 0
     const p = -2 * k * m;
     const q = randInt(-9, 9);
     const zeroTime = m;
@@ -35365,7 +35420,7 @@ const TYPE_33_2c = {
       { math: workingBlock([
           { l: "P(different colours)", s: "=", r: `1 &minus; ${frac(7, 15, true)} = ${frac(8, 15, true)}` },
           { l: "", s: "", r: "" },
-          { l: "Whichever order (red-then-blue or blue-then-red), the bag now has 3 red and 5 blue left (8 total).", s: "", r: "" },
+          { full: true, text: "Whichever order (red-then-blue or blue-then-red), the bag now has 3 red and 5 blue left (8 total)." },
           { l: "P(draw | different)", s: "=", r: frac(5, 8, true) + "&nbsp; (the remaining counter is blue)" }
         ]), note: "The remaining pool is the same regardless of which colour came out first", stacked: true },
       { math: workingBlock([
@@ -35484,7 +35539,7 @@ const TYPE_33_2d = {
 
     const pA = randInt(10, 60) / 100;
     const pB = randInt(10, 60) / 100;
-    const trueProduct = Math.round(pA * pB * 1000) / 1000;
+    const trueProduct = Math.round(pA * pB * 10000) / 10000; // exact: at most 4 d.p.
     const isIndependent = Math.random() < 0.5;
 
     let pAB;
@@ -35493,8 +35548,8 @@ const TYPE_33_2d = {
     } else {
       // Offset by a clearly-different amount, staying a valid probability.
       let offset = (randInt(2, 8) / 100) * (Math.random() < 0.5 ? 1 : -1);
-      pAB = Math.round((trueProduct + offset) * 1000) / 1000;
-      if (pAB <= 0 || pAB >= 1 || Math.abs(pAB - trueProduct) < 0.005) pAB = Math.round(Math.min(0.95, trueProduct + 0.05) * 1000) / 1000;
+      pAB = Math.round((trueProduct + offset) * 10000) / 10000;
+      if (pAB <= 0 || pAB >= 1 || Math.abs(pAB - trueProduct) < 0.005) pAB = Math.round(Math.min(0.95, trueProduct + 0.05) * 10000) / 10000;
     }
 
     return {
@@ -35586,6 +35641,28 @@ const TYPE_33_3a = {
     };
   }
 };
+
+/* Example Test context (audit fix): these Example Tests reuse the Study
+   Example's scenario or diagram, which is not otherwise on screen. */
+function addExampleTestContext() {
+  const svgs = (h) => String(h || '').match(/<svg[\s\S]*?<\/svg>/g) || [];
+  const before = (h, marker) => String(h || '').split(marker === ' a)' ? /(?:<br>\s*|\s)a\)/ : marker)[0].replace(/(<br>\s*)+$/, '').trim();
+  const put = (id, i, html) => {
+    const t = EXAMPLE_TYPES[id];
+    if (!t || !html || !t.exampleTest.parts[i]) return;
+    t.exampleTest.parts[i].prompt = `<div class="et-context">${html}</div>` + t.exampleTest.parts[i].prompt;
+  };
+  const st = (id) => EXAMPLE_TYPES[id] ? EXAMPLE_TYPES[id].study : {};
+  put('7.1a', 0, svgs(st('7.1a').question)[0]);
+  put('11.2a', 0, before(st('11.2a').question, ' a)') + (svgs((st('11.2a').solutionSteps || []).map(x => x.math).join(''))[0] || ''));
+  put('11.2b', 0, before(st('11.2b').question, 'Sketch'));
+  put('11.3a', 0, before(st('11.3a').question, ' a)'));
+  put('11.3b', 0, before(st('11.3b').question, 'Sketch'));
+  put('12.4c', 0, before(st('12.4c').question, ' a)') + (svgs((st('12.4c').solutionSteps || []).map(x => x.math).join(''))[0] || ''));
+  put('17.0a', 0, svgs(st('17.0a').question)[0]);
+  const nets = svgs(EXAMPLE_TYPES['18.1c'] && EXAMPLE_TYPES['18.1c'].exampleTest.solutionSteps.map(x => x.math).join(''));
+  put('18.1c', 0, nets[0]); put('18.1c', 1, nets[1]);
+}
 
 const EXAMPLE_TYPES = {
   "2.1a": TYPE_2_1a,
@@ -35939,6 +36016,7 @@ const EXAMPLE_TYPES = {
   "33.2d": TYPE_33_2d,
   "33.3a": TYPE_33_3a
 };
+addExampleTestContext();
 
 </script>
 <script>
@@ -35954,6 +36032,7 @@ let currentTopicTestQ = null; // holds the generated question object for topic t
 let topicTestScore = { earned: 0, total: 0 };
 let navSearchQuery = "";   // live text from the sidebar search box
 let tierFilter = "all";    // all | foundation | higher — sidebar tier filter
+let ttCheckedBefore = false; // true once the current Topic Test question has been marked -- a re-check cannot earn Mastered
 let ttSolutionViewed = false; // true once the current Topic Test question's solution has been revealed -- disqualifies this attempt from earning Mastered, even at 100%
 
 /* =========================================================================
@@ -36368,7 +36447,7 @@ function renderExampleTest(t, area) {
     block.innerHTML = `
       <div class="qpart-header">
         <span class="qpart-label">(${p.label})</span>
-        <span class="qpart-marks">[${p.marks} marks]</span>
+        <span class="qpart-marks">[${p.marks} mark${p.marks === 1 ? "" : "s"}]</span>
       </div>
       <div class="qpart-prompt">${p.prompt}</div>
       <div class="answer-row">
@@ -36380,19 +36459,44 @@ function renderExampleTest(t, area) {
   });
 }
 
+/* CHECKER_FINAL — one answer checker for all four GCSE Maths Mastery
+   editions (Higher, Combined, Foundation, WJEC). Replaces the engine block
+   from `function normaliseAnswer(` up to `function checkExampleTest() {`.
+   Based on the Higher/Combined agent's checker, plus: space-separated number
+   lists, ".5" for 0.5, and 3+ s.f. roundings of long stored decimals. */
 function normaliseAnswer(str) {
   if (str === null || str === undefined) return '';
   let s = String(str).trim().toLowerCase()
+    // keep mixed numbers ("2 4/5") distinguishable from "24/5" before spaces go
+    .replace(/(\d)\s+(\d+\s*\/\s*\d)/g, '$1&$2')
+    // numbers separated only by spaces ("2 3 5 7") are a list: "2,3,5,7"
+    // (a spaced-out big number "5 600 000" becomes 5,600,000 = 5600000)
+    .replace(/(\d)\s+(?=-?\d)/g, '$1,')
     .replace(/\s+/g, '')
+    // ".5" = "0.5"
+    .replace(/(^|[^\d])\.(\d)/g, '$10.$2')
     .replace(/£/g, '')
-    .replace(/,/g, '')
+    .replace(/%/g, '')
     .replace(/[×*]/g, 'x')
+    .replace(/÷/g, '/')
+    .replace(/[\[{]/g, '(').replace(/[\]}]/g, ')')
     .replace(/²/g, '^2').replace(/³/g, '^3').replace(/⁴/g, '^4').replace(/⁵/g, '^5')
-    // Normalise inequality signs: ≤ → <=, ≥ → >=, unicode minus in inequalities
-    .replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/−/g, '-');
+    // Normalise inequality signs: ≤ → <=, ≥ → >=, unicode minus/dashes → hyphen
+    .replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/[−–]/g, '-')
+    // "+-", "+/-" typed for ±; "sqrt" typed for √; "pi" typed for π
+    .replace(/\+\/-|\+-/g, '±')
+    .replace(/sqrt/g, '√').replace(/√\((\d+)\)/g, '√$1')
+    .replace(/(^|[^a-z])pi(?![a-z])/g, '$1π')
+    // "-25 and 25" / "3 or -3" typed for a two-number list
+    .replace(/(\d)(?:and|or|&(?!\d))(-?\d)/g, '$1,$2')
+    // a single term in brackets over a denominator: "(-x)/6" = "-x/6"
+    .replace(/(^|[^a-z\d)^])\((-?[\da-z.^√π]+)\)(?=\/)/g, '$1$2');
+  // Commas are kept (they separate list items and coordinates); only a
+  // comma used as a thousands separator in a single number is dropped.
+  if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g, '');
   // Normalise reversed inequalities: if answer looks like "7>x" rewrite as "x<7"
   // Matches: digit(s)[op]letter or letter[op]digit(s) including <=, >=
-  s = s.replace(/^(-?\d+)(<=|>=|<|>)([a-z])$/, (m, n, op, v) => {
+  s = s.replace(/^(-?\d+(?:\.\d+)?)(<=|>=|<|>)([a-z])$/, (m, n, op, v) => {
     const flip = {'<':'>', '>':'<', '<=':'>=', '>=':'<='};
     return `${v}${flip[op]}${n}`;
   });
@@ -36408,9 +36512,109 @@ function normaliseRemainder(str) {
   return s;
 }
 
+/* Exact value of a number written as an integer, decimal, fraction or
+   mixed number (in normalised form, e.g. "-3", "2.5", "7/4", "1&3/4").
+   Returns {n, d} with d > 0 in lowest terms, or null. */
+function exactNumber(s) {
+  const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a || 1; };
+  let m = s.match(/^(-?)(\d+)&(\d+)\/(\d+)$/);
+  if (m) { const d = +m[4]; if (!d) return null; const n = (+m[2] * d + +m[3]) * (m[1] ? -1 : 1); const g = gcd(n, d); return { n: n / g, d: d / g, lowest: gcd(+m[3], d) === 1 }; }
+  m = s.match(/^(-?\d+)\/(-?\d+)$/);
+  if (m) { let n = +m[1], d = +m[2]; if (!d) return null; if (d < 0) { n = -n; d = -d; } const g = gcd(n, d); return { n: n / g, d: d / g, lowest: g === 1 }; }
+  m = s.match(/^(-?)(\d+)(?:\.(\d+))?$/);
+  if (m) { const dp = (m[3] || '').length; let n = +((m[2] || '0') + (m[3] || '')), d = Math.pow(10, dp); if (m[1]) n = -n; const g = gcd(n, d); return { n: n / g, d: d / g, lowest: true }; }
+  return null;
+}
+
+/* Compare two numbers given as plain decimals. Whole-number answers must
+   match exactly; for a decimal answer, a reply with MORE decimal places is
+   accepted when it rounds to the stored answer (e.g. 42.41 for 42.4), and a
+   reply with the same or fewer decimal places must be numerically equal
+   ("3.10" = "3.1"). An explicit tolerance (graph-reading questions) widens
+   this to +/- tolerance. */
+function decimalsMatch(u, c, tolerance) {
+  const uNum = parseFloat(u), cNum = parseFloat(c);
+  if (!isFinite(uNum) || !isFinite(cNum)) return false;
+  if (tolerance) return Math.abs(uNum - cNum) <= tolerance + 1e-9;
+  if (Number.isInteger(cNum) && !/\./.test(c)) return uNum === cNum;
+  const cDp = (c.split('.')[1] || '').length, uDp = (u.split('.')[1] || '').length;
+  if (Math.abs(uNum - cNum) < 1e-9) return true;
+  // A long stored decimal (5+ d.p., e.g. 0.333333 for 1/3) also accepts a
+  // rounding of it to at least 3 significant figures (0.333, not 0.33).
+  if (uDp < cDp && cDp >= 5 && u.replace(/^-?0*\.?0*/, '').replace('.', '').length >= 3)
+    return Math.abs(uNum - cNum) <= 0.5 * Math.pow(10, -uDp) + 1e-12;
+  if (uDp <= cDp) return false;
+  return Math.abs(uNum - cNum) <= 0.5 * Math.pow(10, -cDp) + 1e-12;
+}
+
+/* Algebraic answers: the terms of a sum may be written in any order and the
+   factors of a product in any order ("(x+9)(x+6)" = "(x+6)(x+9)",
+   "-7a+14x" = "14x-7a"), but nothing else is rearranged, so the FORM of the
+   answer (factorised, expanded, simplified) still has to match. */
+function canonicalAlgebra(s) {
+  function splitTop(str, seps) {
+    const out = []; let depth = 0, cur = '';
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i];
+      if (ch === '(') depth++;
+      if (ch === ')') depth--;
+      if (depth === 0 && seps.includes(ch) && i > 0 && !/[\^(\/=±]/.test(str[i - 1])) { out.push(cur); cur = ch; continue; }
+      cur += ch;
+    }
+    out.push(cur);
+    return out;
+  }
+  function canonSum(str) {
+    return splitTop(str, '+-').filter(t => t !== '').map(t => {
+      const sign = /^[+-]/.test(t) ? t[0] : '+';
+      return sign + canonProduct(t.replace(/^[+-]/, ''));
+    }).sort().join('');
+  }
+  function canonProduct(t) {
+    // split into bracket groups (with any following power) and other chunks
+    const factors = []; let i = 0;
+    while (i < t.length) {
+      if (t[i] === '(') {
+        let depth = 0, j = i;
+        for (; j < t.length; j++) { if (t[j] === '(') depth++; if (t[j] === ')') { depth--; if (depth === 0) break; } }
+        if (j >= t.length) return t;
+        let k = j + 1; const pm = t.slice(k).match(/^\^\d+/); if (pm) k += pm[0].length;
+        factors.push('(' + canonSum(t.slice(i + 1, j)) + ')' + t.slice(j + 1, k));
+        i = k;
+      } else {
+        let j = i; while (j < t.length && t[j] !== '(') j++;
+        factors.push(t.slice(i, j)); i = j;
+      }
+    }
+    if (factors.some(f => /[\/]/.test(f[0] === '(' ? '' : f) || /^\//.test(f))) return factors.join('');
+    return factors.sort().join('');
+  }
+  if (!/[a-z(√π]/.test(s) || /[<>,;:&]/.test(s) || /\.\d*x10\^|^\d+(\.\d+)?x10\^/.test(s)) return null;
+  try {
+    return s.split('=').map(side => canonSum(side)).join('=');
+  } catch (e) { return null; }
+}
+
+/* A single coordinate / vector / list of numbers, with or without brackets,
+   or several bracketed pairs ("(1,2),(3,4)" or "1,2;3,4"). Returns an array
+   of tuples of normalised number strings, or null. */
+function numberTuples(s) {
+  const num = '-?(?:\\d+&)?\\d+(?:\\.\\d+)?(?:\\/\\d+)?';
+  const tuple = new RegExp(`^\\(?(${num}(?:,${num})+)\\)?$`);
+  let parts;
+  if (s.includes(';')) parts = s.split(';');
+  else if (/\),\(/.test(s)) parts = s.split(/\),\(/).map((p, i, a) => (i > 0 ? '(' : '') + p + (i < a.length - 1 ? ')' : ''));
+  else parts = [s];
+  const out = [];
+  for (const p of parts) { const m = p.match(tuple); if (!m) return null; out.push(m[1].split(',')); }
+  return out;
+}
+
 function checkAnswerMatch(userInput, correct, options) {
+  options = options || {};
   const u = normaliseAnswer(userInput);
   const c = normaliseAnswer(correct);
+  if (u === '') return false;
   if (u === c) return true;
 
   // Remainder-style answers (e.g. "168 r 1") — tolerate notation variants.
@@ -36424,32 +36628,28 @@ function checkAnswerMatch(userInput, correct, options) {
   // from the string shape) so this only ever applies where the data
   // deliberately marks it as order-independent — e.g. NOT the "arrange
   // these numbers in order" question, where order is the entire point.
-  if (options && options.orderIndependent) {
+  if (options.orderIndependent) {
     const splitSort = (s) => s.split('x').filter(Boolean).sort().join('x');
     if (splitSort(u) === splitSort(c)) return true;
   }
 
-  // Order-independent COMMA-separated value lists (e.g. "x = 12 or -12",
-  // answered as "12,-12"): distinct from the x-based check above, which
-  // would wrongly glue "12,-12" into "12-12" with nothing to split on.
-  // Each comma-separated item is compared as a number, since items here
-  // are signed values, not symbolic factors.
-  if (options && options.commaOrderIndependent) {
-    const splitSortNums = (s) => String(s).trim().toLowerCase().replace(/\s+/g, '')
-      .split(',').filter(Boolean).map(Number).sort((a, b) => a - b).join(',');
-    const uList = splitSortNums(userInput);
-    const cList = splitSortNums(correct);
-    if (uList === cList && !uList.includes('nan')) return true;
+  // Order-independent COMMA-separated lists (e.g. "x = 12 or -12" answered
+  // as "12,-12", or "x=3,y=-1"): numeric items are compared as numbers,
+  // other items (equations such as "x=3" or "y=2x+1") as normalised text.
+  if (options.commaOrderIndependent) {
+    const items = (s) => normaliseAnswer(s).split(',').filter(Boolean).map(it => {
+      if (/^-?\d+(\.\d+)?$/.test(it)) return 'n:' + Number(it);
+      const canon = canonicalAlgebra(it);
+      return 't:' + (canon || it);
+    }).sort().join('|');
+    if (items(userInput) === items(correct)) return true;
   }
 
   // Clause-aware order independence: for answers covering multiple numbers
   // at once (e.g. "8=2^3,12=2^2x3"), the terms within EACH number's clause
   // can be written in any order, but the clauses themselves must line up
   // (clause-by-clause) — this avoids unsafely mixing terms across numbers.
-  // Operates on a lightly-normalised version that preserves commas, since
-  // normaliseAnswer() strips them (commas are needed to find clause
-  // boundaries here, unlike everywhere else commas are just punctuation).
-  if (options && options.clauseOrderIndependent) {
+  if (options.clauseOrderIndependent) {
     const lightNormalise = (s) => String(s).trim().toLowerCase().replace(/\s+/g, '').replace(/[×*]/g, 'x').replace(/²/g, '^2').replace(/³/g, '^3');
     const normaliseClauses = (s) => lightNormalise(s).split(',').filter(Boolean).map(clause => {
       const eqIdx = clause.indexOf('=');
@@ -36466,12 +36666,9 @@ function checkAnswerMatch(userInput, correct, options) {
   // Order-independent list of (x,y) coordinate pairs (e.g. region-shading
   // questions like "list the integer points in R"): a set of points has no
   // canonical order, so pairs are extracted, sorted, and compared as a set.
-  // Kept separate from commaOrderIndependent above, which assumes each
-  // comma-separated item is a single number — coordinate pairs contain their
-  // own internal comma, so that path can't be reused here.
-  if (options && options.coordPairsOrderIndependent) {
+  if (options.coordPairsOrderIndependent) {
     const extractPairs = (s) => {
-      const matches = String(s).match(/-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?/g) || [];
+      const matches = String(s).replace(/[−–]/g, '-').match(/-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?/g) || [];
       return matches.map(m => m.replace(/\s+/g, '')).sort().join(';');
     };
     const uPairs = extractPairs(userInput);
@@ -36479,25 +36676,150 @@ function checkAnswerMatch(userInput, correct, options) {
     if (uPairs && uPairs === cPairs) return true;
   }
 
-  // Tolerate trivial numeric formatting differences, e.g. "159.0" vs "159",
-  // or "50.00" vs "50" — both fully numeric, value matches within a tiny tolerance.
-  // SKIPPED when options.exactPrecision is set: for rounding-to-d.p./s.f.
-  // questions, the number of digits IS the actual skill being tested, so a
-  // numeric "close enough" check would wrongly accept a wrong precision
-  // (e.g. "0.0059" vs the correct "0.00589" are numerically close, but the
-  // first is rounded to the wrong number of significant figures).
   const isPureNumber = (s) => /^-?\d+(\.\d+)?$/.test(s);
-  if (!(options && options.exactPrecision) && isPureNumber(u) && isPureNumber(c)) {
-    const uNum = parseFloat(u);
-    const cNum = parseFloat(c);
-    // Whole-number correct answers require an exact match -- the 0.005
-    // fuzzy tolerance exists to absorb genuine formatting differences on
-    // decimal answers (e.g. "3.140" vs "3.14"), not to mask a wrong answer
-    // that merely happens to be close to the right integer.
-    if (Number.isInteger(cNum)) return uNum === cNum;
-    return Math.abs(uNum - cNum) < 0.005;
+
+  // A plain-number answer typed with a unit, a percentage sign or as
+  // "x = 5" is still the number (e.g. "12 cm", "40°", "x = 5", "85%").
+  let uu = u;
+  if (!/=/.test(c)) uu = uu.replace(/^[a-z]=(?=[-\d(√.])/, '');
+  if (isPureNumber(c) && !isPureNumber(uu)) {
+    uu = uu
+      .replace(/(°|degrees?|mm\^?[23]?|cm\^?[23]?|km\^?2?|m\^?[23]?|kg|g|mg|ml|l|litres?|liters?|seconds?|secs?|s|minutes?|mins?|hours?|hrs?|h|m\/s\^?2?|km\/h|kph|mph|p|pence|pounds?|people|years?|days?|weeks?)$/, '');
   }
+
+  // Rounding-to-d.p./s.f. questions: the digits ARE the skill, so the
+  // answer must match exactly — apart from extra trailing zeros, which do
+  // not change the value or the precision shown (e.g. "2.0" for "2",
+  // "2.490" for "2.49", "406.50" for "406.5").
+  if (options.exactPrecision && !options.tolerance) {
+    if (uu === c) return true;
+    if (isPureNumber(uu) && isPureNumber(c) && uu.startsWith(c)) {
+      const rest = uu.slice(c.length);
+      if (/\./.test(c) ? /^0+$/.test(rest) : /^\.0+$/.test(rest)) return true;
+    }
+    return false;
+  }
+
+  // Numbers: decimals, fractions and mixed numbers.
+  if (isPureNumber(uu) && isPureNumber(c)) return decimalsMatch(uu, c, options.tolerance);
+  const cx = exactNumber(c), ux = exactNumber(uu);
+  if (cx && ux && !isPureNumber(c)) {
+    // stored answer is a fraction / mixed number: an improper fraction, mixed
+    // number or whole number with the same value is accepted, provided it
+    // is in its lowest terms; a decimal only where the part allows it.
+    if (isPureNumber(uu) && !Number.isInteger(+uu) && !options.allowDecimal) return false;
+    if (isPureNumber(uu) && !Number.isInteger(+uu) && options.allowDecimal) return Math.abs(+uu - cx.n / cx.d) < 0.005;
+    return ux.lowest && ux.n === cx.n && ux.d === cx.d;
+  }
+  if (cx && ux && isPureNumber(c) && options.allowFraction) return ux.lowest && Math.abs(ux.n / ux.d - cx.n / cx.d) < 1e-9;
+
+  // "x = 3/5" style answers whose right-hand side is a number
+  const eqNum = (s) => { const m = s.match(/^([a-z])=(.+)$/); return m ? [m[1], m[2]] : null; };
+  const ue = eqNum(u), ce = eqNum(c);
+  if (ue && ce && ue[0] === ce[0] && exactNumber(ce[1]) && exactNumber(ue[1]) && (options.allowDecimal || options.allowFraction)) {
+    const a = exactNumber(ue[1]), b = exactNumber(ce[1]);
+    if (a.n * b.d === b.n * a.d && (a.lowest || isPureNumber(ue[1]))) return true;
+    if (isPureNumber(ue[1]) && Math.abs(+ue[1] - b.n / b.d) < 0.005) return true;
+  }
+
+  // Coordinates / vectors / number lists: brackets optional, and each
+  // number compared by value (so "(0,-0.5)" matches "(0,-1/2)").
+  const ut = numberTuples(u), ct = numberTuples(c);
+  if (ut && ct && ut.length === ct.length && ut.every((t, i) => t.length === ct[i].length)) {
+    const same = (a, b) => {
+      if (isPureNumber(a) && isPureNumber(b)) return decimalsMatch(a, b, options.tolerance);
+      const x = exactNumber(a), y = exactNumber(b);
+      if (!x || !y) return false;
+      if (options.tolerance) return Math.abs(x.n / x.d - y.n / y.d) <= options.tolerance + 1e-9;
+      return x.n === y.n && x.d === y.d;
+    };
+    if (ut.every((t, i) => t.every((v, j) => same(v, ct[i][j])))) return true;
+  }
+
+  // 24-hour clock times with or without a leading zero ("8:45" = "08:45")
+  if (/^\d{1,2}:\d{2}$/.test(u) && /^\d{1,2}:\d{2}$/.test(c) && u.replace(/^0/, '') === c.replace(/^0/, '')) return true;
+
+  // multiple-choice answers stored as "Answer B": accept just "B"
+  const mc = c.match(/^answer([a-d])$/);
+  if (mc && u === mc[1]) return true;
+
+  // Chained inequalities with number bounds ("-1/3<=y<=1/3"): bounds are
+  // compared by value; a decimal to 2 or more d.p. is accepted for a
+  // recurring fraction (e.g. "-0.33<=y<=0.33").
+  const chain = (s) => s.match(/^(-?\d+(?:\.\d+)?(?:\/\d+)?)(<=|<)([a-z])(<=|<)(-?\d+(?:\.\d+)?(?:\/\d+)?)$/);
+  const uch = chain(uu), cch = chain(c);
+  if (uch && cch && uch[2] === cch[2] && uch[3] === cch[3] && uch[4] === cch[4]) {
+    const bound = (a, b) => {
+      const x = exactNumber(a), y = exactNumber(b);
+      if (!x || !y) return false;
+      if (x.n * y.d === y.n * x.d && (x.lowest || isPureNumber(a))) return true;
+      return /\//.test(b) && isPureNumber(a) && (a.split('.')[1] || '').length >= 2 && Math.abs(+a - y.n / y.d) < 0.005;
+    };
+    if (bound(uch[1], cch[1]) && bound(uch[5], cch[5])) return true;
+  }
+
+  // Algebra: same terms / factors in a different order.
+  const ua = canonicalAlgebra(u), ca = canonicalAlgebra(c);
+  if (ua && ca && ua === ca) return true;
+
+  // Formulae and rearrangements ("x=(y+3)/4" for "x=y/4+3/4"): an
+  // algebraically equivalent right-hand side is accepted.
+  const cEq = c.match(/^([a-z])=([^,<>=]*[a-z][^,<>=]*)$/), uEq = u.match(/^([a-z])=([^,<>=]+)$/);
+  if (cEq && uEq && cEq[1] === uEq[1] && formulaValuesMatch(uEq[2], cEq[2])) return true;
+
+  // Text lists: commas/spaces were previously ignored entirely; keep that
+  // leniency for answers that are not lists of numbers (e.g. "A:1st,B:2nd").
+  if (!/\d,-?\d/.test(c) && u.replace(/,/g, '') === c.replace(/,/g, '')) return true;
+
   return false;
+}
+
+/* True when two formula right-hand sides agree in value at several points.
+   Understands numbers, single-letter variables, + − × ÷ ^, brackets, sqrt
+   and pi, with implied multiplication (e.g. "6pn/100", "p(1+0.06n)"). */
+function formulaValuesMatch(a, b) {
+  const evaluate = (src, vars) => {
+    const s = src.replace(/√|sqrt/g, 'S').replace(/π|pi/g, 'P');
+    let i = 0;
+    const peek = () => s[i];
+    const atom = () => {
+      const ch = peek();
+      if (ch === '(') { i++; const v = expr(); if (s[i] !== ')') throw 0; i++; return v; }
+      if (ch === 'S') { i++; return Math.sqrt(atom()); }
+      if (ch === 'P') { i++; return Math.PI; }
+      if (/[a-z]/.test(ch)) { i++; if (!(ch in vars)) throw 0; return vars[ch]; }
+      const m = s.slice(i).match(/^\d+(\.\d+)?|^\.\d+/);
+      if (!m) throw 0;
+      i += m[0].length; return parseFloat(m[0]);
+    };
+    const power = () => { const b0 = atom(); if (peek() === '^') { i++; return Math.pow(b0, unary()); } return b0; };
+    const unary = () => { if (peek() === '-') { i++; return -unary(); } if (peek() === '+') { i++; return unary(); } return power(); };
+    const term = () => {
+      let v = unary();
+      for (;;) {
+        const ch = peek();
+        if (ch === 'x' && /[\d)]/.test(s[i - 1] || '') && /[\d(a-zSP]/.test(s[i + 1] || '') && !('x' in vars)) { i++; v *= unary(); continue; }
+        if (ch === '*') { i++; v *= unary(); continue; }
+        if (ch === '/') { i++; v /= unary(); continue; }
+        if (ch !== undefined && /[\d(a-zSP.]/.test(ch)) { v *= unary(); continue; }
+        return v;
+      }
+    };
+    const expr = () => { let v = term(); while (peek() === '+' || peek() === '-') { const op = s[i++]; const r = term(); v = op === '+' ? v + r : v - r; } return v; };
+    const v = expr();
+    if (i !== s.length) throw 0;
+    return v;
+  };
+  const names = [...new Set((a + b).replace(/sqrt|pi|√|π/g, '').match(/[a-z]/g) || [])];
+  try {
+    for (let k = 0; k < 4; k++) {
+      const vars = {};
+      names.forEach((n, j) => { vars[n] = 11.3 + 7.7 * k + 3.1 * j; });
+      const x = evaluate(a, vars), y = evaluate(b, vars);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x - y) > 1e-9 * Math.max(1, Math.abs(y))) return false;
+    }
+    return true;
+  } catch (e) { return false; }
 }
 
 function checkExampleTest() {
@@ -36508,7 +36830,7 @@ function checkExampleTest() {
     total += p.marks;
     const input = document.getElementById(`etAns_${i}`);
     const fb = document.getElementById(`etFb_${i}`);
-    const ok = checkAnswerMatch(input.value, p.correct, { orderIndependent: p.orderIndependent, commaOrderIndependent: p.commaOrderIndependent, clauseOrderIndependent: p.clauseOrderIndependent, coordPairsOrderIndependent: p.coordPairsOrderIndependent, exactPrecision: p.exactPrecision });
+    const ok = checkAnswerMatch(input.value, p.correct, { orderIndependent: p.orderIndependent, commaOrderIndependent: p.commaOrderIndependent, clauseOrderIndependent: p.clauseOrderIndependent, coordPairsOrderIndependent: p.coordPairsOrderIndependent, exactPrecision: p.exactPrecision, tolerance: p.tolerance, allowDecimal: p.allowDecimal, allowFraction: p.allowFraction });
     input.classList.remove('correct', 'incorrect');
     input.classList.add(ok ? 'correct' : 'incorrect');
     fb.style.display = 'inline';
@@ -36519,7 +36841,7 @@ function checkExampleTest() {
   const summary = document.getElementById('etMarkSummary');
   summary.classList.add('visible');
   const pct = Math.round((earned / total) * 100);
-  summary.innerHTML = `<div class="total">${earned} / ${total} marks</div><div class="pct">${pct}% — ${pct === 100 ? "Excellent, fully mastered!" : "Review the worked solution below, then try the Topic Test."}</div>`;
+  summary.innerHTML = `<div class="total">${earned} / ${total} marks</div><div class="pct">${pct}% — ${pct === 100 ? "Excellent! Now prove it on the Topic Test, with new numbers, to master this skill." : "Review the worked solution below, then try the Topic Test."}</div>`;
   recordAttempt(activeTypeId, "exampleTest", pct);
   renderNav();
   updateMasteryStatusBadge();
@@ -36533,9 +36855,41 @@ function toggleEtSolution() {
   btn.textContent = showing ? 'Show Solution' : 'Hide Solution';
 }
 
+/* Topic Test text tidy (audit fix). Generated questions and worked
+   solutions sometimes print a coefficient of 1 ("x² + 1x − 6") or a zero
+   term ("y = −2x² + 0x + 0", "(2x + 0) ÷ 2"). This rewrites only those two
+   patterns, only in the text between HTML tags (never inside tags/SVG
+   markup), and only for freshly generated Topic Test questions; the
+   mathematics is unchanged. Fixed Study / Example Test text is untouched. */
+function tidyMathText(html) {
+  if (typeof html !== 'string') return html;
+  return html.split(/(<[^>]*>)/).map(seg => {
+    if (seg.charAt(0) === '<') return seg;
+    let t = seg;
+    // "+ 0x", "− 0x²" (a zero term in a letter)
+    t = t.replace(/\s[+−-]\s0([a-z])(\^\d+|[²³])?(?=[\s)\]=,.]|$)/g, '');
+    // "+ 0" / "− 0" after a letter term, power or bracket, at the end of an expression
+    t = t.replace(/([a-z](?:[²³]|\^\d+)?|\))\s[+−-]\s0(?=\s*[)\]=,<>÷]|\s*$|\s+[A-Z]|\s+(?:and|has|is|for|where|when|gives)\b|\.(?!\d))/g, '$1');
+    // coefficient 1 in front of a letter: "+ 1x −" → "+ x −", "= 1x²" → "= x²"
+    t = t.replace(/(^|[\s(=+−\-\[,:])1([a-z])(?=\^|[²³)\]=,+−\-<>/]|\s+[+−\-=<>)\]]|\s*$|\.(?!\d)|\s+(?:and|has|is|for|where|when|gives)\b)/g, '$1$2');
+    return t;
+  }).join('');
+}
+
+function tidyTopicTest(q) {
+  if (!q || !Array.isArray(q.parts)) return q;
+  q.parts.forEach(p => { p.prompt = tidyMathText(p.prompt); });
+  (q.solutionSteps || []).forEach(st => {
+    if (typeof st.math === 'string') st.math = tidyMathText(st.math);
+    if (typeof st.note === 'string') st.note = tidyMathText(st.note);
+  });
+  return q;
+}
+
 function renderTopicTest(t, area) {
-  currentTopicTestQ = t.topicTestGenerator();
+  currentTopicTestQ = tidyTopicTest(t.topicTestGenerator());
   ttSolutionViewed = false; // fresh question -- solution hasn't been seen yet
+  ttCheckedBefore = false;
   const q = currentTopicTestQ;
   const totalMarks = q.parts.reduce((s, p) => s + p.marks, 0);
   area.innerHTML = `
@@ -36568,7 +36922,7 @@ function renderTopicTest(t, area) {
     block.innerHTML = `
       <div class="qpart-header">
         <span class="qpart-label">(${p.label})</span>
-        <span class="qpart-marks">[${p.marks} marks]</span>
+        <span class="qpart-marks">[${p.marks} mark${p.marks === 1 ? "" : "s"}]</span>
       </div>
       <div class="qpart-prompt">${p.prompt}</div>
       <div class="answer-row">
@@ -36587,7 +36941,7 @@ function checkTopicTest() {
     total += p.marks;
     const input = document.getElementById(`ttAns_${i}`);
     const fb = document.getElementById(`ttFb_${i}`);
-    const ok = checkAnswerMatch(input.value, p.correct, { orderIndependent: p.orderIndependent, commaOrderIndependent: p.commaOrderIndependent, clauseOrderIndependent: p.clauseOrderIndependent, coordPairsOrderIndependent: p.coordPairsOrderIndependent, exactPrecision: p.exactPrecision });
+    const ok = checkAnswerMatch(input.value, p.correct, { orderIndependent: p.orderIndependent, commaOrderIndependent: p.commaOrderIndependent, clauseOrderIndependent: p.clauseOrderIndependent, coordPairsOrderIndependent: p.coordPairsOrderIndependent, exactPrecision: p.exactPrecision, tolerance: p.tolerance, allowDecimal: p.allowDecimal, allowFraction: p.allowFraction });
     input.classList.remove('correct', 'incorrect');
     input.classList.add(ok ? 'correct' : 'incorrect');
     fb.style.display = 'inline';
@@ -36601,6 +36955,8 @@ function checkTopicTest() {
   let pctMsg;
   if (pct === 100 && ttSolutionViewed) {
     pctMsg = "but you viewed the solution first, so this attempt doesn't count as Mastered. Try a fresh question without peeking to prove it.";
+  } else if (pct === 100 && ttCheckedBefore) {
+    pctMsg = "but this question was already marked once, so this attempt doesn't count as Mastered. Try a fresh question and get it all right first time.";
   } else if (pct === 100) {
     pctMsg = "Excellent, fully mastered!";
   } else {
@@ -36608,7 +36964,8 @@ function checkTopicTest() {
   }
   summary.innerHTML = `<div class="total">${earned} / ${total} marks</div><div class="pct">${pct}% — ${pctMsg}</div>`;
 
-  recordAttempt(activeTypeId, "topicTest", pct, ttSolutionViewed);
+  recordAttempt(activeTypeId, "topicTest", pct, ttSolutionViewed || ttCheckedBefore);
+  ttCheckedBefore = true;
   renderNav();
   updateMasteryStatusBadge();
 
